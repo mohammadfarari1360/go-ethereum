@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -87,12 +88,16 @@ func RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contr
 }
 
 type ewasmPrecompile struct {
-	code     []byte
-	vm       *exec.VM
-	contract *Contract
-	retData  []byte
-	idx      uint32
-	input    []byte
+	code            []byte
+	vm              *exec.VM
+	contract        *Contract
+	retData         []byte
+	idx             uint32
+	input           []byte
+	pidx            common.Address
+	DurationDefault int64
+	DurationWasm    int64
+	counts          int64
 }
 
 // This is a subset of the functions available in the full EEI at
@@ -107,11 +112,7 @@ var eeiFunctionList = []string{
 	"revert",
 }
 
-func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, error) {
-	if name != "ethereum" {
-		return nil, fmt.Errorf("Unknown module name: %s", name)
-	}
-
+func ethereumModule(precompile *ewasmPrecompile) *wasm.Module {
 	m := wasm.NewModule()
 	m.Types = &wasm.SectionTypes{
 		Entries: []wasm.FunctionSig{
@@ -194,11 +195,72 @@ func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, err
 		Entries: entries,
 	}
 
-	return m, nil
+	return m
 }
 
-func newEWASMPrecompile(code []byte) *ewasmPrecompile {
-	ret := &ewasmPrecompile{}
+// bigIntModule returns a WASM module that implements basic BigInt funcitons
+func bigIntModule(precompile *ewasmPrecompile) *wasm.Module {
+	m := wasm.NewModule()
+
+	// Only one type: address of both input and output buffers, no return code
+	m.Types = &wasm.SectionTypes{
+		Entries: []wasm.FunctionSig{
+			{
+				ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
+				ReturnTypes: []wasm.ValueType{},
+			},
+		},
+	}
+	m.FunctionIndexSpace = []wasm.Function{
+		{
+			Sig: &m.Types.Entries[0],
+			Host: reflect.ValueOf(func(p *exec.Process, x, y, output int32) {
+
+			}),
+			Body: &wasm.FunctionBody{},
+		},
+		{
+			Sig: &m.Types.Entries[0],
+			Host: reflect.ValueOf(func(p *exec.Process, x, y, output int32) {
+
+			}),
+			Body: &wasm.FunctionBody{},
+		},
+	}
+
+	entries := make(map[string]wasm.ExportEntry)
+
+	entries["bigint_add"] = wasm.ExportEntry{
+		FieldStr: "bigint_add",
+		Kind:     wasm.ExternalFunction,
+		Index:    uint32(0),
+	}
+	entries["bigint_mul"] = wasm.ExportEntry{
+		FieldStr: "bigint_mul",
+		Kind:     wasm.ExternalFunction,
+		Index:    uint32(1),
+	}
+
+	m.Export = &wasm.SectionExports{
+		Entries: entries,
+	}
+
+	return m
+}
+
+func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, error) {
+	switch name {
+	case "ethereum":
+		return ethereumModule(precompile), nil
+	case "bigint":
+		return bigIntModule(precompile), nil
+	default:
+		return nil, fmt.Errorf("Unknown module name: %s", name)
+	}
+}
+
+func newEWASMPrecompile(code []byte, idx byte) *ewasmPrecompile {
+	ret := &ewasmPrecompile{pidx: common.BytesToAddress([]byte{idx})}
 	module, err := wasm.ReadModule(bytes.NewReader(code), func(s string) (*wasm.Module, error) {
 		return moduleResolver(s, ret)
 	})
@@ -227,6 +289,8 @@ func (c *ewasmPrecompile) RequiredGas(input []byte) uint64 {
 }
 
 func (c *ewasmPrecompile) Run(input []byte, contract *Contract) ([]byte, error) {
+	c.counts++
+
 	c.vm.Restart()
 	mem := c.vm.Memory()
 
@@ -242,8 +306,28 @@ func (c *ewasmPrecompile) Run(input []byte, contract *Contract) ([]byte, error) 
 		c.contract = nil
 	}()
 
+	startTime := time.Now().UnixNano()
+	PrecompiledContractsByzantium[c.pidx].Run(input, contract)
+	c.DurationDefault += time.Now().UnixNano() - startTime
+
+	// Save the gas to compare with the result of RequiredGas()
+	beforeGas := contract.Gas
+	defer func() {
+		afterGas := contract.Gas
+		if beforeGas-afterGas != PrecompiledContractsByzantium[c.pidx].RequiredGas(contract.Input) {
+			fmt.Println("Contracts returned two different kinds of gas consumption", beforeGas-afterGas, PrecompiledContractsByzantium[c.pidx].RequiredGas(contract.Input), contract.Gas-beforeGas, contract.CallerAddress.Hex(), contract.Address().Hex(), c.pidx, common.ToHex(contract.Input))
+		}
+
+		if c.counts%10000 == 1 {
+			fmt.Println("Precompile", c.pidx, "average time", c.DurationWasm/c.counts, "ns (Wasm) and default average time", c.DurationDefault/c.counts, "ns")
+		}
+	}()
+
 	/* Run the contract */
+	startTime = time.Now().UnixNano()
 	_, err := c.vm.ExecCode(int64(c.idx))
+	c.DurationWasm += time.Now().UnixNano() - startTime
+
 	if err == nil {
 		return c.retData, nil
 	}
