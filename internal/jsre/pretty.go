@@ -209,34 +209,16 @@ func (ctx ppctx) fields(obj *otto.Object) []string {
 
 func iterOwnAndConstructorKeys(vm *otto.Otto, obj *otto.Object, f func(string)) {
 	seen := make(map[string]bool)
-	iterOwnKeys(vm, obj, func(prop string) {
+	for _, prop := range obj.Keys() {
 		seen[prop] = true
 		f(prop)
-	})
+	}
 	if cp := constructorPrototype(obj); cp != nil {
-		iterOwnKeys(vm, cp, func(prop string) {
+		for _, prop := range cp.Keys() {
 			if !seen[prop] {
 				f(prop)
 			}
-		})
-	}
-}
-
-func iterOwnKeys(vm *otto.Otto, obj *otto.Object, f func(string)) {
-	Object, _ := vm.Object("Object")
-	rv, _ := Object.Call("getOwnPropertyNames", obj.Value())
-	gv, _ := rv.Export()
-	switch gv := gv.(type) {
-	case []interface{}:
-		for _, v := range gv {
-			f(v.(string))
 		}
-	case []string:
-		for _, v := range gv {
-			f(v)
-		}
-	default:
-		panic(fmt.Errorf("Object.getOwnPropertyNames returned unexpected type %T", gv))
 	}
 }
 
