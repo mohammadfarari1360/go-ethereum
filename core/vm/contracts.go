@@ -36,7 +36,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var datadb *sql.DB
+//var datadb *sql.DB
 
 func init() {
 	datadb, err := sql.Open("sqlite3", "./expmod_usage.db")
@@ -270,7 +270,19 @@ func (c *bigModExp) Run(input []byte, bn *big.Int) ([]byte, error) {
 		modLen  = new(big.Int).SetBytes(getData(input, 64, 32)).Uint64()
 	)
 
-	statement, err := datadb.Prepare("INSERT INTO calls (blocknr, input, output) VALUES(?, ?, ?)")
+	datadb, err := sql.Open("sqlite3", "./expmod_usage.db")
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		datadb.Close()
+	}()
+	statement, err := datadb.Prepare("CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, blocknr INTEGER, input BLOB, output BLOB)")
+	if err != nil {
+		panic(err)
+	}
+	statement.Exec()
+	statement, err = datadb.Prepare("INSERT INTO calls (blocknr, input, output) VALUES(?, ?, ?)")
 	if err != nil {
 		panic(err)
 	}
@@ -282,7 +294,10 @@ func (c *bigModExp) Run(input []byte, bn *big.Int) ([]byte, error) {
 	}
 	// Handle a special case when both the base and mod length is zero
 	if baseLen == 0 && modLen == 0 {
-		statement.Exec(bn, input, []byte{})
+		_, err = statement.Exec(bn.Uint64(), input, []byte{})
+		if err != nil {
+			panic(err)
+		}
 		return []byte{}, nil
 	}
 	// Retrieve the operands and execute the exponentiation
@@ -292,12 +307,18 @@ func (c *bigModExp) Run(input []byte, bn *big.Int) ([]byte, error) {
 		mod  = new(big.Int).SetBytes(getData(input, baseLen+expLen, modLen))
 	)
 	if mod.BitLen() == 0 {
-		statement.Exec(bn, input, common.LeftPadBytes([]byte{}, int(modLen)))
+		_, err = statement.Exec(bn.Uint64(), input, common.LeftPadBytes([]byte{}, int(modLen)))
+		if err != nil {
+			panic(err)
+		}
 		// Modulo 0 is undefined, return zero
 		return common.LeftPadBytes([]byte{}, int(modLen)), nil
 	}
 	ret, err := common.LeftPadBytes(base.Exp(base, exp, mod).Bytes(), int(modLen)), nil
-	statement.Exec(bn, input, ret)
+	_, err = statement.Exec(bn.Uint64(), input, ret)
+	if err != nil {
+		panic(err)
+	}
 	return ret, err
 }
 
