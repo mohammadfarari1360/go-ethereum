@@ -18,12 +18,16 @@ package ethash
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -83,4 +87,301 @@ func TestCalcDifficulty(t *testing.T) {
 			t.Error(name, "failed. Expected", test.CurrentDifficulty, "and calculated", diff)
 		}
 	}
+}
+
+type mockChainReader struct {
+	header  *types.Header
+	headers []types.Header
+}
+
+// Config retrieves the blockchain's chain configuration.
+func (m *mockChainReader) Config() *params.ChainConfig {
+	return &params.ChainConfig{
+		DAOForkBlock:   big.NewInt(15),
+		ByzantiumBlock: big.NewInt(42),
+	}
+}
+
+// CurrentHeader retrieves the current header from the local chain.
+func (m *mockChainReader) CurrentHeader() *types.Header {
+	return nil
+}
+
+// GetHeader retrieves a block header from the database by hash and number.
+func (m *mockChainReader) GetHeader(hash common.Hash, number uint64) *types.Header {
+	if m.header != nil {
+		if m.header.Number.Uint64() == number {
+			return m.header
+		}
+	} else {
+		if m.headers != nil {
+			for _, h := range m.headers {
+				if h.Number.Uint64() == number {
+					return &h
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// GetHeaderByNumber retrieves a block header from the database by number.
+func (m *mockChainReader) GetHeaderByNumber(number uint64) *types.Header {
+	return nil
+}
+
+// GetHeaderByHash retrieves a block header from the database by its hash.
+func (m *mockChainReader) GetHeaderByHash(hash common.Hash) *types.Header {
+	return nil
+}
+
+// GetBlock retrieves a block from the database by hash and number.
+func (m *mockChainReader) GetBlock(hash common.Hash, number uint64) *types.Block {
+	return nil
+}
+
+func TestAuthor(t *testing.T) {
+	ethash := &Ethash{}
+	coinbase := common.BytesToAddress(common.FromHex("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"))
+	header := &types.Header{
+		Number:   big.NewInt(38),
+		Coinbase: coinbase,
+	}
+	addr, err := ethash.Author(header)
+	if err != nil {
+		t.Fatalf("Getting the author of a block from its header should return no error, got %v", err)
+	}
+	if addr != coinbase {
+		t.Fatalf("Author is different from the coinbase: %v != %v", coinbase.Hex(), addr.Hex())
+	}
+}
+
+func TestVerifyHeader(t *testing.T) {
+	tests := []struct {
+		number   int64
+		parent   int64
+		name     string
+		err      error
+		gasLimit uint64
+		gasUsed  uint64
+		config   Config
+	}{
+		{
+			number:   38,
+			parent:   37,
+			name:     "FullFake",
+			err:      nil,
+			gasUsed:  params.MinGasLimit / 2,
+			gasLimit: params.MinGasLimit,
+			config:   Config{PowMode: ModeFullFake},
+		},
+		{
+			number:   38,
+			parent:   36,
+			name:     "PresenceOfParentBlock",
+			err:      consensus.ErrUnknownAncestor,
+			gasUsed:  params.MinGasLimit / 2,
+			gasLimit: params.MinGasLimit,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ethash := &Ethash{config: test.config}
+			header := &types.Header{
+				Number:     big.NewInt(test.number),
+				Time:       uint64(time.Now().Unix()),
+				Difficulty: big.NewInt(131072),
+				GasLimit:   test.gasLimit,
+				GasUsed:    test.gasUsed,
+			}
+			chain := &mockChainReader{
+				header: &types.Header{
+					Number:     big.NewInt(test.parent),
+					Time:       uint64(time.Now().Unix() - 1),
+					Difficulty: big.NewInt(1),
+				},
+			}
+
+			err := ethash.VerifyHeader(chain, header, false)
+			if err != test.err {
+				t.Fatalf("invalild error: got %v, expected %v", err, test.err)
+			}
+		})
+	}
+}
+
+func TestVerifyHeaderBlockPresentShortCircuit(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number: big.NewInt(38),
+	}
+	if ethash.VerifyHeader(&mockChainReader{header: header}, header, false) != nil {
+		t.Fatal("Should not try to recover a block that is already known")
+	}
+}
+
+func TestVerifyExtraDataSize(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number: big.NewInt(38),
+		Time:   uint64(time.Now().Unix()),
+		Extra:  make([]byte, params.MaximumExtraDataSize+1),
+	}
+	chain := &mockChainReader{
+		header: &types.Header{
+			Number: big.NewInt(37),
+			Time:   uint64(time.Now().Unix() - 1),
+		},
+	}
+	err := ethash.VerifyHeader(chain, header, false)
+	if err == nil || err.Error() != "extra-data too long: 33 > 32" {
+		t.Fatalf("Should refuse a block with too much extra data, err=: %v", err)
+	}
+}
+
+func TestVerifyFutureBlock(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number: big.NewInt(38),
+		Time:   uint64(time.Now().Add(24 * time.Hour).Unix()),
+	}
+	chain := &mockChainReader{
+		header: &types.Header{
+			Number: big.NewInt(37),
+			Time:   uint64(time.Now().Unix()),
+		},
+	}
+	err := ethash.VerifyHeader(chain, header, false)
+	if err != consensus.ErrFutureBlock {
+		t.Fatalf("Expected verify to flag the block as too far in the future, got: %v", err)
+	}
+}
+
+func TestVerifyBlockOlderThanParent(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number: big.NewInt(38),
+		Time:   uint64(time.Now().Unix() - 1),
+	}
+	chain := &mockChainReader{
+		header: &types.Header{
+			Number: big.NewInt(37),
+			Time:   uint64(time.Now().Unix()),
+		},
+	}
+	err := ethash.VerifyHeader(chain, header, false)
+	if err != errOlderBlockTime {
+		t.Fatalf("Expected verify to flag the block as too far in the future, got: %v", err)
+	}
+}
+
+func TestVerifyCheckInvalidDifficulty(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number:     big.NewInt(38),
+		Time:       uint64(time.Now().Unix()),
+		Difficulty: big.NewInt(1),
+	}
+	chain := &mockChainReader{
+		header: &types.Header{
+			Number:     big.NewInt(37),
+			Time:       uint64(time.Now().Unix() - 1),
+			Difficulty: big.NewInt(1),
+		},
+	}
+	err := ethash.VerifyHeader(chain, header, false)
+	if err == nil || err.Error() != "invalid difficulty: have 1, want 131072" {
+		t.Fatalf("Expected an invalid difficulty, got: %v", err)
+	}
+}
+
+func TestVerifyCheckGasLimit(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number:     big.NewInt(38),
+		Time:       uint64(time.Now().Unix()),
+		Difficulty: big.NewInt(131072),
+		GasLimit:   uint64(0x7fffffffffffffff) + 1,
+	}
+	chain := &mockChainReader{
+		header: &types.Header{
+			Number:     big.NewInt(37),
+			Time:       uint64(time.Now().Unix() - 1),
+			Difficulty: big.NewInt(1),
+		},
+	}
+	err := ethash.VerifyHeader(chain, header, false)
+	if err == nil || err.Error() != fmt.Sprintf("invalid gasLimit: have %d, max %d", uint64(0x7fffffffffffffff)+1, uint64(0x7fffffffffffffff)) {
+		t.Fatalf("Expected an invalid gas usage, got: %v", err)
+	}
+}
+
+func TestVerifyCheckGasUsed(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number:     big.NewInt(38),
+		Time:       uint64(time.Now().Unix()),
+		Difficulty: big.NewInt(131072),
+		GasLimit:   33,
+		GasUsed:    38,
+	}
+	chain := &mockChainReader{
+		header: &types.Header{
+			Number:     big.NewInt(37),
+			Time:       uint64(time.Now().Unix() - 1),
+			Difficulty: big.NewInt(1),
+		},
+	}
+	err := ethash.VerifyHeader(chain, header, false)
+	if err == nil || err.Error() != fmt.Sprintf("invalid gasUsed: have %d, gasLimit %d", 38, 33) {
+		t.Fatalf("Expected an invalid gas usage, got: %v", err)
+	}
+}
+
+func TestVerifyCheckGasLimitBound(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number:     big.NewInt(38),
+		Time:       uint64(time.Now().Unix()),
+		Difficulty: big.NewInt(131072),
+		GasLimit:   38,
+		GasUsed:    33,
+	}
+	chain := &mockChainReader{
+		header: &types.Header{
+			Number:     big.NewInt(37),
+			Time:       uint64(time.Now().Unix() - 1),
+			Difficulty: big.NewInt(1),
+			GasLimit:   36,
+		},
+	}
+	err := ethash.VerifyHeader(chain, header, false)
+	if err == nil || err.Error() != fmt.Sprintf("invalid gas limit: have %d, want %d += 0", header.GasLimit, chain.header.GasLimit) {
+		t.Fatalf("Expected an invalid gas usage, got: %v", err)
+	}
+}
+
+func TestByzantiumCalcDiff(t *testing.T) {
+	ethash := &Ethash{}
+	header := &types.Header{
+		Number:     big.NewInt(44),
+		Time:       uint64(time.Now().Unix()),
+		Difficulty: big.NewInt(131072),
+		GasLimit:   params.MinGasLimit,
+		GasUsed:    33,
+	}
+	parent := &types.Header{
+		Number:     big.NewInt(43),
+		Time:       uint64(time.Now().Unix() - 1),
+		Difficulty: big.NewInt(1),
+		GasLimit:   params.MinGasLimit,
+	}
+	chain := &mockChainReader{
+		header: parent,
+	}
+
+	expected := ethash.CalcDifficulty(chain, header.Time, parent)
+	fmt.Println(expected, chain.Config().IsByzantium(header.Number), chain.Config().ByzantiumBlock)
 }
