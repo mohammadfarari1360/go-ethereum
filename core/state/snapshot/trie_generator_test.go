@@ -18,12 +18,12 @@ package snapshot
 
 import (
 	"encoding/binary"
-	"fmt"
+	"sync"
+	"testing"
+
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"sync"
-	"testing"
 )
 
 func generateTrie(it AccountIterator, generator *trieGenerator) common.Hash {
@@ -34,7 +34,7 @@ func generateTrie(it AccountIterator, generator *trieGenerator) common.Hash {
 	)
 	wg.Add(1)
 	go func() {
-		generator.Generate(in, out)
+		generator.Generate2(in, out)
 		wg.Done()
 	}()
 	// Feed leafs
@@ -47,6 +47,7 @@ func generateTrie(it AccountIterator, generator *trieGenerator) common.Hash {
 	return result
 
 }
+
 func TestTrieGeneration(t *testing.T) {
 	// Create an empty base layer and a snapshot tree out of it
 	base := &diskLayer{
@@ -68,7 +69,35 @@ func TestTrieGeneration(t *testing.T) {
 	it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
 	generator := &trieGenerator{}
 	hash := generateTrie(it, generator)
-	fmt.Printf("hash: %x \n", hash)
+	if exp, got := hash, common.HexToHash("807fbe7d4e4c62b80b1e7f682bb13ed409467df2a5903e5af44b88f6b08d0519"); exp != got {
+		t.Fatalf("expected %v got %v", exp, got)
+	}
+}
+
+func TestTrieGenerationAppendonly(t *testing.T) {
+	// Create an empty base layer and a snapshot tree out of it
+	base := &diskLayer{
+		diskdb: rawdb.NewMemoryDatabase(),
+		root:   common.HexToHash("0x01"),
+		cache:  fastcache.New(1024 * 500),
+	}
+	snaps := &Tree{
+		layers: map[common.Hash]snapshot{
+			base.root: base,
+		},
+	}
+	// Stack three diff layers on top with various overlaps
+	snaps.Update(common.HexToHash("0x02"), common.HexToHash("0x01"),
+		randomAccountSet("0x11", "0x22", "0x33"), nil)
+	// We call this once before the benchmark, so the creation of
+	// sorted accountlists are not included in the results.
+	head := snaps.Snapshot(common.HexToHash("0x02"))
+	it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
+	generator := &trieGenerator{}
+	hash := generateTrie(it, generator)
+	if exp, got := hash, common.HexToHash("807fbe7d4e4c62b80b1e7f682bb13ed409467df2a5903e5af44b88f6b08d0519"); exp != got {
+		t.Fatalf("expected %v got %v", exp, got)
+	}
 }
 
 func BenchmarkTrieGeneration(b *testing.B) {
