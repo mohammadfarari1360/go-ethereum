@@ -21,17 +21,19 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// AppendOnlyTrie is a Merkle Patricia Trie, which can only be used for
+// HashTrie is a Merkle Patricia Trie, which can only be used for
 // constructing a trie from a sequence of sorted leafs, in descending order
-type AppendOnlyTrie struct {
-	root node
+type HashTrie struct {
+	root    node
+	rootKey []byte
+	build   []node
 }
 
-func NewAppendOnlyTrie() *AppendOnlyTrie {
-	return &AppendOnlyTrie{root: nil}
+func NewHashTrie() *HashTrie {
+	return &HashTrie{root: nil, rootKey: nil, build: nil}
 }
 
-func (t *AppendOnlyTrie) TryUpdate(key, value []byte) error {
+func (t *HashTrie) TryUpdate(key, value []byte) error {
 	k := keybytesToHex(key)
 	if len(value) == 0 {
 		panic("deletion not supported")
@@ -40,7 +42,7 @@ func (t *AppendOnlyTrie) TryUpdate(key, value []byte) error {
 	return nil
 }
 
-func (t *AppendOnlyTrie) insert(n node, prefix, key []byte, value node) node {
+func (t *HashTrie) insert(n node, prefix, key []byte, value node) node {
 	if len(key) == 0 {
 		return value
 	}
@@ -56,8 +58,9 @@ func (t *AppendOnlyTrie) insert(n node, prefix, key []byte, value node) node {
 		// Otherwise branch out at the index where they differ.
 		branch := &fullNode{flags: nodeFlag{dirty: true}}
 		branch.Children[n.Key[matchlen]] = t.insert(nil, append(prefix, n.Key[:matchlen+1]...), n.Key[matchlen+1:], n.Val)
-		// TODO: We can now shoot off n.Val for hashing
-		branch.Children[key[matchlen]] = t.insert(nil, append(prefix, key[:matchlen+1]...), key[matchlen+1:], value)
+		// Hashing the sub-node, nothing will be added to this sub-branch
+		hashed, _ := newHasher(false).hash(t.insert(nil, append(prefix, key[:matchlen+1]...), key[matchlen+1:], value), true)
+		branch.Children[key[matchlen]] = hashed.(hashNode)
 
 		// Replace this shortNode with the branch if it occurs at index 0.
 		if matchlen == 0 {
@@ -71,6 +74,21 @@ func (t *AppendOnlyTrie) insert(n node, prefix, key []byte, value node) node {
 
 	case *fullNode:
 		n.flags = nodeFlag{dirty: true}
+		// If any previous child wasn't already hashed, do it now since
+		// the keys arrive in order, so if a branch is here then whatever
+		// came before can safely be hashed.
+		for i := int(key[0]) - 1; i > 0; i -= 1 {
+			switch n.Children[i].(type) {
+			case *shortNode, *fullNode, *valueNode:
+				hashed, _ := newHasher(false).hash(n.Children[i], true)
+				n.Children[i] = hashed
+			// hash encountred, the rest has already been hashed
+			case hashNode:
+				break
+			default:
+				panic("invalid node")
+			}
+		}
 		n.Children[key[0]] = t.insert(n.Children[key[0]], append(prefix, key[0]), key[1:], value)
 		return n
 
@@ -87,7 +105,7 @@ func (t *AppendOnlyTrie) insert(n node, prefix, key []byte, value node) node {
 	}
 }
 
-func (t *AppendOnlyTrie) Hash() common.Hash {
+func (t *HashTrie) Hash() common.Hash {
 	if t.root == nil {
 		return emptyRoot
 	}
