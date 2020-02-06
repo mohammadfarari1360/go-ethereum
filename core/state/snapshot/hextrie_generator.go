@@ -31,6 +31,8 @@ type leaf struct {
 // as the rest of geth, with no enhancements or optimizations
 type trieGenerator struct{}
 
+//BenchmarkTrieGeneration/4K-8         	      84	  17356015 ns/op	 6616751 B/op	   55014 allocs/op
+//BenchmarkTrieGeneration/10K-8        	      25	  44645911 ns/op	16541959 B/op	  137526 allocs/op
 func (gen *trieGenerator) Generate3(in chan (leaf), out chan (common.Hash)) {
 	t := trie.NewHashTrie()
 	for leaf := range in {
