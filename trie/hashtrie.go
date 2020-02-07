@@ -62,7 +62,7 @@ func (t *HashTrie) insert(n node, prefix, key []byte, value node) node {
 
 		// Otherwise branch out at the index where they differ.
 		branch := &fullNode{flags: nodeFlag{dirty: true}}
-		hashed, _ := newHasher(false).hash(t.insert(nil, append(prefix, n.Key[:matchlen+1]...), n.Key[matchlen+1:], n.Val), true)
+		hashed, _ := newHasher(false).hash(t.insert(nil, append(prefix, n.Key[:matchlen+1]...), n.Key[matchlen+1:], n.Val), false)
 		branch.Children[n.Key[matchlen]] = hashed.(hashNode)
 
 		// Hashing the sub-node, nothing will be added to this sub-branch
@@ -86,7 +86,7 @@ func (t *HashTrie) insert(n node, prefix, key []byte, value node) node {
 		for i := int(key[0]) - 1; i > 0; i -= 1 {
 			switch n.Children[i].(type) {
 			case *shortNode, *fullNode, *valueNode:
-				hashed, _ := newHasher(false).hash(n.Children[i], true)
+				hashed, _ := newHasher(false).hash(n.Children[i], false)
 				n.Children[i] = hashed
 			// hash encountred, the rest has already been hashed
 			case hashNode:
