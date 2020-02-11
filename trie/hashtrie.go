@@ -55,12 +55,18 @@ func (t *HashTrie) insert(n node, prefix, key []byte, value node) node {
 			n.flags = nodeFlag{dirty: true}
 			return n
 		}
+
+		if key[matchlen] < n.Key[matchlen] {
+			panic("Keys were inserted unsorted, this should not happen")
+		}
+
 		// Otherwise branch out at the index where they differ.
 		branch := &fullNode{flags: nodeFlag{dirty: true}}
-		branch.Children[n.Key[matchlen]] = t.insert(nil, append(prefix, n.Key[:matchlen+1]...), n.Key[matchlen+1:], n.Val)
+		hashed, _ := newHasher(false).hash(t.insert(nil, append(prefix, n.Key[:matchlen+1]...), n.Key[matchlen+1:], n.Val), false)
+		branch.Children[n.Key[matchlen]] = hashed.(hashNode)
+
 		// Hashing the sub-node, nothing will be added to this sub-branch
-		hashed, _ := newHasher(false).hash(t.insert(nil, append(prefix, key[:matchlen+1]...), key[matchlen+1:], value), true)
-		branch.Children[key[matchlen]] = hashed.(hashNode)
+		branch.Children[key[matchlen]] = t.insert(nil, append(prefix, key[:matchlen+1]...), key[matchlen+1:], value)
 
 		// Replace this shortNode with the branch if it occurs at index 0.
 		if matchlen == 0 {
@@ -80,7 +86,7 @@ func (t *HashTrie) insert(n node, prefix, key []byte, value node) node {
 		for i := int(key[0]) - 1; i > 0; i -= 1 {
 			switch n.Children[i].(type) {
 			case *shortNode, *fullNode, *valueNode:
-				hashed, _ := newHasher(false).hash(n.Children[i], true)
+				hashed, _ := newHasher(false).hash(n.Children[i], false)
 				n.Children[i] = hashed
 			// hash encountred, the rest has already been hashed
 			case hashNode:
