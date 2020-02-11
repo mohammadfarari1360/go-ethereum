@@ -34,7 +34,7 @@ func generateTrie(it AccountIterator, generator *trieGenerator) common.Hash {
 	)
 	wg.Add(1)
 	go func() {
-		generator.Generate3(in, out)
+		generator.Generate4(in, out)
 		wg.Done()
 	}()
 	// Feed leaves
