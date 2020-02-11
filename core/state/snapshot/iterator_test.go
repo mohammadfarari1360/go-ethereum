@@ -74,7 +74,7 @@ func (ti *testIterator) Next() bool {
 }
 
 func (ti *testIterator) Error() error {
-	panic("implement me")
+	return nil
 }
 
 func (ti *testIterator) Hash() common.Hash {
@@ -82,7 +82,7 @@ func (ti *testIterator) Hash() common.Hash {
 }
 
 func (ti *testIterator) Account() []byte {
-	panic("implement me")
+	return []byte{ti.values[0]}
 }
 
 func (ti *testIterator) Release() {}
