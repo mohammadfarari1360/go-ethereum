@@ -126,7 +126,7 @@ func TestMultipleStackTrieInsertion(t *testing.T) {
 	}
 
 	// 4K accounts
-	snaps.Update(common.HexToHash("0x02"), common.HexToHash("0x01"), makeAccounts(272), nil)
+	snaps.Update(common.HexToHash("0x02"), common.HexToHash("0x01"), makeAccounts(4000), nil)
 	head := snaps.Snapshot(common.HexToHash("0x02"))
 	// Call it once to make it create the lists before test starts
 	head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))

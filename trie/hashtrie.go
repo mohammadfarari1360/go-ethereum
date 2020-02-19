@@ -241,12 +241,22 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 		// Special case: the split is at the first byte, in this case
 		// the current ext needs to be skipped.
 		if whereitdiffers == 0 {
+			// Hash the existing node
 			saveSlot := st.stack[level].ext.Key[0]
 			st.stack[level].ext.Key = st.stack[level].ext.Key[1:]
-			h, _ := st.hasher.hash(&st.stack[level].ext, false)
+			var h node
+			if len(st.stack[level].ext.Key) == 0 {
+				h, _ = st.hasher.hash(&st.stack[level].branch, false)
+			} else {
+				h, _ = st.hasher.hash(&st.stack[level].ext, false)
+			}
+			for i := range st.stack[level].branch.Children {
+				st.stack[level].branch.Children[i] = nil
+			}
 			st.stack[level].branch.Children[saveSlot] = h
 			// Set the ext key to empty
 			st.stack[level].ext.Key = st.stack[level].ext.Key[:0]
+			st.top = level
 
 			// Insert the new leaf, starting with allocating more space
 			// if needed.
