@@ -141,10 +141,8 @@ type StackTrie struct {
 
 func NewStackTrie() *StackTrie {
 	return &StackTrie{
-		top: -1,
-		stack: []StackTrieItem{
-			StackTrieItem{},
-		},
+		top:    -1,
+		stack:  make([]StackTrieItem, 65),
 		hasher: newHasher(false),
 	}
 }
@@ -156,6 +154,14 @@ func (st *StackTrie) TryUpdate(key, value []byte) error {
 	}
 	st.insert(&st.stack[0].ext, nil, k, valueNode(value))
 	return nil
+}
+
+func (st *StackTrie) alloc() {
+	for i := 0; i < 16; i++ {
+		st.stack[st.top+1].branch.Children[i] = nil
+	}
+
+	st.top++
 }
 
 func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
@@ -190,10 +196,11 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 	extEnd := extStart + len(st.stack[level].ext.Key)
 	if bytes.Equal(st.stack[level].ext.Key, key[extStart:extEnd]) {
 		// The extension and the key are identical on the length of
-		// the extension, so st.stack[level].ext.Val should be a fullNode and
-		// the difference should be found there. Panic if this is
-		// not the case.
-		fn := st.stack[level].ext.Val.(*fullNode)
+		// the extension, so st.stack[level].ext.Val should point to
+		// st.stack[level].branch, and the difference should be foud
+		// there.
+		var fn *fullNode
+		fn = &st.stack[level].branch
 
 		// The correct entry is the only one that isn't nil
 		for i := 15; i >= 0; i-- {
@@ -211,13 +218,9 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 
 		// That fullNode should have at most one non-hashNode child,
 		// hash it because no more nodes will be inserted in it.
-		if len(st.stack) == st.top+1 {
-			st.stack = append(st.stack, StackTrieItem{})
-		}
-
-		st.top++
+		st.alloc()
 		keyUntilHere := len(st.stack[level].keyUntilHere) + len(st.stack[level].ext.Key) + 1
-		st.stack[level].branch.Children[key[keyUntilHere]] = &st.stack[st.top].ext
+		st.stack[level].branch.Children[key[keyUntilHere-1]] = &st.stack[st.top].ext
 		st.stack[st.top].keyUntilHere = key[:keyUntilHere]
 		st.stack[st.top].ext.Key = key[keyUntilHere:]
 		st.stack[st.top].ext.Val = hv
@@ -235,48 +238,92 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 			}
 		}
 
-		// Start by hashing the node right after the extension,
-		// to free some space.
-		var hn node
-		switch st.stack[level].ext.Val.(type) {
-		case *fullNode:
-			h, _ := st.hasher.hash(st.stack[level].ext.Val, false)
-			hn = h.(hashNode)
-		case hashNode, valueNode:
-			hn = st.stack[level].ext.Val
-		default:
-			panic("Encountered unexpected node type")
+		// Special case: the split is at the first byte, in this case
+		// the current ext needs to be skipped.
+		if whereitdiffers == 0 {
+			saveSlot := st.stack[level].ext.Key[0]
+			st.stack[level].ext.Key = st.stack[level].ext.Key[1:]
+			h, _ := st.hasher.hash(&st.stack[level].ext, false)
+			st.stack[level].branch.Children[saveSlot] = h
+			// Set the ext key to empty
+			st.stack[level].ext.Key = st.stack[level].ext.Key[:0]
+
+			// Insert the new leaf, starting with allocating more space
+			// if needed.
+			st.alloc()
+			st.stack[st.top].ext.Key = key[offset+1:]
+			st.stack[st.top].ext.Val = hv
+			st.stack[level].branch.Children[key[offset]] = &st.stack[st.top].ext
+
+			st.stack[st.top].keyUntilHere = key[:offset+1]
+
+			// Update parent reference if this isn't the root
+			if level > 0 {
+				parentslot := key[offset-1]
+				st.stack[level-1].branch.Children[parentslot] = &st.stack[level].branch
+			}
+
+		} else {
+			// Start by hashing the node right after the extension,
+			// to free some space.
+			var hn node
+			switch st.stack[level].ext.Val.(type) {
+			case *fullNode:
+				h, _ := st.hasher.hash(st.stack[level].ext.Val, false)
+				hn = h.(hashNode)
+				st.top = level
+			case hashNode, valueNode:
+				hn = st.stack[level].ext.Val
+			default:
+				panic("Encountered unexpected node type")
+			}
+
+			// Store the completed subtree in a fullNode at the slot
+			// where both keys differ.
+			slot := st.stack[level].ext.Key[whereitdiffers]
+
+			// Allocate the next full node, it's going to be
+			// reused several times.
+			st.alloc()
+
+			// Special case: the keys differ at the last element
+			if len(st.stack[level].ext.Key) == whereitdiffers+1 {
+				// Directly use the hashed value
+				for i := range st.stack[level].branch.Children {
+					st.stack[level].branch.Children[i] = nil
+				}
+				st.stack[level].branch.Children[slot] = hn
+			} else {
+				// Store the partially-hashed old node in the newly allocated
+				// slot, in order to finish the hashing.
+				st.stack[st.top].ext.Key = st.stack[level].ext.Key[whereitdiffers+1:]
+				st.stack[st.top].ext.Val = hn // XXX changer le nom en hashPrevBranch
+				st.stack[st.top].ext.flags = nodeFlag{dirty: true}
+				var h node
+				if len(st.stack[st.top].ext.Key) == 0 {
+					h, _ = st.hasher.hash(&st.stack[st.top].branch, false)
+				} else {
+					h, _ = st.hasher.hash(&st.stack[st.top].ext, false)
+				}
+				st.stack[level].branch.Children[slot] = h
+			}
+			st.stack[level].ext.Val = &st.stack[level].branch
+			st.stack[level].ext.Key = st.stack[level].ext.Key[:whereitdiffers]
+
+			// Now use the newly allocated+hashed stack st.stack[level] to store
+			// the rest of the inserted (key, value) pair.
+			slot = key[whereitdiffers+len(st.stack[level].keyUntilHere)]
+			st.stack[st.top].ext.Key = key[whereitdiffers+len(st.stack[level].keyUntilHere)+1:]
+			if len(st.stack[st.top].ext.Key) == 0 {
+				//st.stack[level].branch.Children[slot] = &st.stack[st.top].branch
+				st.stack[level].branch.Children[slot] = hv
+			} else {
+				st.stack[level].branch.Children[slot] = &st.stack[st.top].ext
+				st.stack[st.top].ext.Val = hv
+			}
+			st.stack[st.top].keyUntilHere = key[:whereitdiffers+len(st.stack[level].keyUntilHere)+1]
+			st.stack[st.top].depth = st.stack[level].depth + 1
 		}
-
-		// Allocate the next full node, it's going to be
-		// reused several times.
-		if len(st.stack) == st.top+1 {
-			st.stack = append(st.stack, StackTrieItem{})
-		}
-		st.top++
-
-		// Store the partially-hashed old node in the newly allocated
-		// slot, in order to finish the hashing.
-		slot := st.stack[level].ext.Key[whereitdiffers]
-		st.stack[st.top].ext.Key = st.stack[level].ext.Key[whereitdiffers+1:]
-		st.stack[st.top].ext.Val = hn
-		st.stack[st.top].ext.flags = nodeFlag{dirty: true}
-
-		// Hasher directement la branche si l'ext est vide
-		h, _ := st.hasher.hash(&st.stack[st.top].ext, false)
-		st.stack[level].branch.Children[slot] = h.(hashNode)
-		st.stack[level].ext.Val = &st.stack[level].branch
-		st.stack[level].ext.Key = st.stack[level].ext.Key[:whereitdiffers]
-
-		// Now use the newly allocated+hashed stack st.stack[level] to store
-		// the rest of the inserted (key, value) pair.
-		slot = key[whereitdiffers+len(st.stack[level].keyUntilHere)]
-		st.stack[level].branch.Children[slot] = &st.stack[st.top].ext
-		st.stack[st.top].ext.Key = key[whereitdiffers+len(st.stack[level].keyUntilHere)+1:]
-		st.stack[st.top].ext.Val = hv
-		st.stack[st.top].keyUntilHere = key[:whereitdiffers+len(st.stack[level].keyUntilHere)+1]
-		st.stack[st.top].depth = st.stack[level].depth + 1
-
 	}
 
 	// if ext.length == 0, directly return the full node.
