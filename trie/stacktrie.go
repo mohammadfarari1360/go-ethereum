@@ -129,6 +129,7 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 		// hash it because no more nodes will be inserted in it.
 		st.alloc()
 		keyUntilHere := len(st.stack[level].keyUntilHere) + len(st.stack[level].ext.Key) + 1
+		st.stack[level].branch.Children[key[keyUntilHere-1]] = &st.stack[st.top].ext
 		st.stack[st.top].keyUntilHere = key[:keyUntilHere]
 		st.stack[st.top].ext.Key = key[keyUntilHere:]
 		st.stack[st.top].ext.Val = hv
@@ -183,15 +184,14 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 		} else {
 			// Start by hashing the node right after the extension,
 			// to free some space.
-			var hn node
+			var hashPrevBranch node
 			switch st.stack[level].ext.Val.(type) {
 			case *fullNode:
-				//fmt.Println("on veut hasher", st.stack[level].ext.Val)
 				h, _ := st.hasher.hash(st.stack[level].ext.Val, false)
-				hn = h.(hashNode)
+				hashPrevBranch = h.(hashNode)
 				st.top = level
 			case hashNode, valueNode:
-				hn = st.stack[level].ext.Val
+				hashPrevBranch = st.stack[level].ext.Val
 			default:
 				panic("Encountered unexpected node type")
 			}
@@ -210,14 +210,15 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 				for i := range st.stack[level].branch.Children {
 					st.stack[level].branch.Children[i] = nil
 				}
-				st.stack[level].branch.Children[slot] = hn
+				st.stack[level].branch.Children[slot] = hashPrevBranch
 			} else {
 				// Store the partially-hashed old node in the newly allocated
 				// slot, in order to finish the hashing.
 				st.stack[st.top].ext.Key = st.stack[level].ext.Key[whereitdiffers+1:]
-				st.stack[st.top].ext.Val = hn // XXX changer le nom en hashPrevBranch
+				st.stack[st.top].ext.Val = hashPrevBranch
 				st.stack[st.top].ext.flags = nodeFlag{dirty: true}
 
+				// Directly hash the branch if the extension is empty
 				var h node
 				if len(st.stack[st.top].ext.Key) == 0 {
 					h, _ = st.hasher.hash(&st.stack[st.top].branch, false)
@@ -251,6 +252,7 @@ func (st *StackTrie) insert(n node, prefix, key []byte, value node) node {
 	return &st.stack[0].ext
 }
 
+// Hash hashes the stack trie by hashing the first entry in the stack
 func (st *StackTrie) Hash() common.Hash {
 	if st.top == -1 {
 		return emptyRoot
