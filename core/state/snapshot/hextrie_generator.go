@@ -35,8 +35,8 @@ type trieGeneratorFn func(in chan (leaf), out chan (common.Hash))
 
 // GenerateTrieRoot takes an account iterator and reproduces the root hash.
 func GenerateTrieRoot(it AccountIterator) common.Hash {
-	return generateTrieRoot(it, StackGenerate)
-	//return generateTrieRoot(it, StdGenerate)
+	//return generateTrieRoot(it, StackGenerate)
+	return generateTrieRoot(it, StdGenerate)
 }
 
 func generateTrieRoot(it AccountIterator, generatorFn trieGeneratorFn) common.Hash {
@@ -55,7 +55,9 @@ func generateTrieRoot(it AccountIterator, generatorFn trieGeneratorFn) common.Ha
 	logged := time.Now()
 	accounts := 0
 	for it.Next() {
-		l := leaf{it.Hash(), it.Account()}
+		slimData := it.Account()
+		fullData := SlimToFull(slimData)
+		l := leaf{it.Hash(), fullData}
 		in <- l
 		if time.Since(logged) > 8*time.Second {
 			log.Info("Generating trie hash from snapshot",
