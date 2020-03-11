@@ -261,3 +261,146 @@ func (st *StackTrie) Hash() common.Hash {
 	h, _ := st.hasher.hash(&st.stack[0].ext, false)
 	return common.BytesToHash(h.(hashNode))
 }
+type ReStackTrie struct {
+	children     [16]*ReStackTrie
+	nodeType     uint8
+	keyUntilHere []byte
+	val          []byte
+	key          []byte
+}
+
+func NewReStackTrie() *ReStackTrie {
+	return &ReStackTrie{
+		keyUntilHere: []byte{},
+		nodeType:     3,
+	}
+}
+
+func (st *ReStackTrie) TryUpdate(key, value []byte) error {
+	k := keybytesToHex(key)
+	if len(value) == 0 {
+		panic("deletion not supported")
+	}
+	st.insert(k, value)
+	return nil
+}
+
+func (st *ReStackTrie) insert(key, value []byte) {
+	// Sanity check
+	if !bytes.Equal(key[:len(st.keyUntilHere)], st.keyUntilHere) {
+		panic("Should not have happened")
+	}
+
+	switch st.nodeType {
+	case 0:
+		/* Branch */
+		idx := key[len(st.keyUntilHere)]
+		if st.children[idx] == nil {
+			st.children[idx] = NewReStackTrie()
+			st.children[idx].keyUntilHere = key[:len(st.keyUntilHere)+1]
+		}
+		st.children[idx].insert(key, value)
+	case 1:
+		/* Ext */
+		// key has already been checked until this point
+		if bytes.Equal(key[len(st.keyUntilHere):len(st.keyUntilHere)+len(st.key)], st.key) {
+			// Recurse
+			st.children[0].insert(key, value)
+		} else {
+			// Split
+			firstdiffindex := len(st.keyUntilHere)
+			for ; st.key[firstdiffindex] == key[firstdiffindex]; firstdiffindex++ {
+			}
+
+			// Save the original part. Depending if the break is
+			// at the extension's last byte or not, create an
+			// intermediate extension or use the extension's child
+			// node directly.
+			var n *ReStackTrie
+			if firstdiffindex < len(st.keyUntilHere)+len(st.key)-1 {
+				n = NewReStackTrie()
+				n.key = st.key[firstdiffindex+1:]
+				n.children[0] = st.children[0]
+				n.nodeType = 1
+			} else {
+				// Break on the last byte, no need to insert
+				// an extension node: reuse the current node
+				n = st.children[0]
+			}
+			n.keyUntilHere = st.key[:firstdiffindex+1]
+
+			// Create a leaf for the inserted part
+			o := NewReStackTrie()
+			o.key = key[firstdiffindex+1:]
+			o.val = value
+			o.keyUntilHere = key[:firstdiffindex+1]
+			o.nodeType = 2
+
+			// Reconfigure current
+			if firstdiffindex == len(st.keyUntilHere) {
+				// Break on the 1st byte?
+				st.children[0] = nil
+				st.children[st.key[firstdiffindex]] = n
+				st.children[key[firstdiffindex]] = o
+				st.nodeType = 0
+				st.key = nil
+			} else {
+				st.children[0] = NewReStackTrie()
+				st.children[0].nodeType = 0
+				st.children[0].children[st.key[firstdiffindex]] = n
+				st.children[0].children[key[firstdiffindex]] = o
+				st.key = st.key[:firstdiffindex]
+			}
+		}
+
+	case 2:
+		/* Leaf */
+		if bytes.Equal(st.key, key[len(st.keyUntilHere):]) {
+			panic("Trying to insert into existing key")
+		}
+
+		firstdiffindex := len(st.keyUntilHere)
+		for ; st.key[firstdiffindex] == key[firstdiffindex]; firstdiffindex++ {
+		}
+
+		// Reconfigure current into extension
+		var p *ReStackTrie
+		if firstdiffindex > len(st.keyUntilHere) {
+			st.nodeType = 1
+			st.children[0] = NewReStackTrie()
+			st.children[0].nodeType = 0 // branch
+			st.children[0].keyUntilHere = key[:firstdiffindex]
+			p = st.children[0]
+		} else {
+			st.nodeType = 0
+			p = st
+			st.children[0] = nil
+		}
+		origIdx := st.key[firstdiffindex]
+		p.children[origIdx] = NewReStackTrie()
+		p.children[origIdx].nodeType = 2 // leaf
+		p.children[origIdx].key = st.key[firstdiffindex+1:]
+		p.children[origIdx].val = st.val
+		p.children[origIdx].keyUntilHere = st.key[:firstdiffindex+1]
+		newIdx := key[firstdiffindex]
+		p.children[newIdx] = NewReStackTrie()
+		p.children[newIdx].nodeType = 2 // leaf
+		p.children[newIdx].key = key[firstdiffindex+1:]
+		p.children[newIdx].val = value
+		p.children[newIdx].keyUntilHere = key[:firstdiffindex+1]
+
+		st.key = st.key[:firstdiffindex]
+	case 3:
+		/* Empty */
+		st.nodeType = 2
+		st.key = key
+		st.val = value
+	default:
+		panic("invalid type")
+	}
+}
+
+func (st *ReStackTrie) Hash() common.Hash {
+	return common.Hash{}
+}
+			}
