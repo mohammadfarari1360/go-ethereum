@@ -595,9 +595,12 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 	if prev != nil {
 		newObj.setBalance(prev.data.Balance)
 	}
-	if s.snap != nil && prev != nil {
-		s.snapDestructs[prev.addrHash] = struct{}{}
-	}
+	// This has been removed. A Create action may be cancelled, if the initcode
+	// exits with error. In that case, we would need to clean up the snapDestructs,
+	// Better to not put it there in the first place, if we can get away with it.
+	//if s.snap != nil && prev != nil {
+	//	s.snapDestructs[prev.addrHash] = struct{}{}
+	//}
 }
 
 func (db *StateDB) ForEachStorage(addr common.Address, cb func(key, value common.Hash) bool) error {
