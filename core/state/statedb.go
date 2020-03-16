@@ -569,12 +569,19 @@ func (s *StateDB) GetOrNewStateObject(addr common.Address) *stateObject {
 func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) {
 	prev = s.getDeletedStateObject(addr) // Note, prev might have been deleted, we need that!
 
+	var prevdestruct bool
+	if s.snap != nil && prev != nil {
+		_, prevdestruct = s.snapDestructs[prev.addrHash]
+		if !prevdestruct {
+			s.snapDestructs[prev.addrHash] = struct{}{}
+		}
+	}
 	newobj = newObject(s, addr, Account{})
 	newobj.setNonce(0) // sets the object to dirty
 	if prev == nil {
 		s.journal.append(createObjectChange{account: &addr})
 	} else {
-		s.journal.append(resetObjectChange{prev: prev})
+		s.journal.append(resetObjectChange{prev: prev, prevdestruct: prevdestruct})
 	}
 	s.setStateObject(newobj)
 	return newobj, prev
@@ -595,12 +602,6 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 	if prev != nil {
 		newObj.setBalance(prev.data.Balance)
 	}
-	// This has been removed. A Create action may be cancelled, if the initcode
-	// exits with error. In that case, we would need to clean up the snapDestructs,
-	// Better to not put it there in the first place, if we can get away with it.
-	//if s.snap != nil && prev != nil {
-	//	s.snapDestructs[prev.addrHash] = struct{}{}
-	//}
 }
 
 func (db *StateDB) ForEachStorage(addr common.Address, cb func(key, value common.Hash) bool) error {
