@@ -18,9 +18,10 @@ package trie
 
 import (
 	"bytes"
-	//"fmt"
+	"io"
 
 	"github.com/ethereum/go-ethereum/common"
+	"golang.org/x/crypto/sha3"
 )
 
 // StackTrieItem represents an (extension, fullnode) tuple to be stored
