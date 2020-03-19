@@ -268,12 +268,12 @@ type ReStackTrie struct {
 	keyUntilHere []byte
 	val          []byte
 	key          []byte
+	keyOffset    int // offset inside the key
 }
 
 func NewReStackTrie() *ReStackTrie {
 	return &ReStackTrie{
-		keyUntilHere: []byte{},
-		nodeType:     3,
+		nodeType: 3,
 	}
 }
 
@@ -294,36 +294,34 @@ func (st *ReStackTrie) TryUpdate(key, value []byte) error {
 }
 
 func (st *ReStackTrie) insert(key, value []byte) {
-	// Sanity check
-	if !bytes.Equal(key[:len(st.keyUntilHere)], st.keyUntilHere) {
-		panic("Should not have happened")
-	}
 
 	switch st.nodeType {
 	case branchNode: /* Branch */
-		idx := key[len(st.keyUntilHere)]
+		idx := key[st.keyOffset]
 		if st.children[idx] == nil {
 			st.children[idx] = NewReStackTrie()
-			st.children[idx].keyUntilHere = key[:len(st.keyUntilHere)+1]
+			st.children[idx].keyOffset = st.keyOffset + 1
 		}
 		st.children[idx].insert(key, value)
 	case extNode: /* Ext */
 		// key has already been checked until this point
-		if bytes.Equal(key[len(st.keyUntilHere):len(st.keyUntilHere)+len(st.key)], st.key) {
-			// Recurse
+		firstdiffindex := 0
+		for ; firstdiffindex < len(st.key) && st.key[firstdiffindex] == key[firstdiffindex+st.keyOffset]; firstdiffindex++ {
+		}
+
+		if firstdiffindex == len(st.key) {
+			// Ext key and key segment are identical, recurse into
+			// child node.
 			st.children[0].insert(key, value)
 		} else {
 			// Split
-			firstdiffindex := len(st.keyUntilHere)
-			for ; st.key[firstdiffindex] == key[firstdiffindex]; firstdiffindex++ {
-			}
 
 			// Save the original part. Depending if the break is
 			// at the extension's last byte or not, create an
 			// intermediate extension or use the extension's child
 			// node directly.
 			var n *ReStackTrie
-			if firstdiffindex < len(st.keyUntilHere)+len(st.key)-1 {
+			if firstdiffindex < len(st.key)-1 {
 				n = NewReStackTrie()
 				n.key = st.key[firstdiffindex+1:]
 				n.children[0] = st.children[0]
@@ -333,49 +331,49 @@ func (st *ReStackTrie) insert(key, value []byte) {
 				// an extension node: reuse the current node
 				n = st.children[0]
 			}
-			n.keyUntilHere = st.key[:firstdiffindex+1]
+			n.keyOffset = st.keyOffset + firstdiffindex + 1
 
 			// Create a leaf for the inserted part
 			o := NewReStackTrie()
-			o.key = key[firstdiffindex+1:]
+			o.keyOffset = st.keyOffset + firstdiffindex + 1
+			o.key = key[o.keyOffset:]
 			o.val = value
-			o.keyUntilHere = key[:firstdiffindex+1]
 			o.nodeType = 2
 
 			// Reconfigure current
-			if firstdiffindex == len(st.keyUntilHere) {
+			if firstdiffindex == 0 {
 				// Break on the 1st byte?
 				st.children[0] = nil
 				st.children[st.key[firstdiffindex]] = n
-				st.children[key[firstdiffindex]] = o
+				st.children[key[st.keyOffset+firstdiffindex]] = o
 				st.nodeType = 0
 				st.key = nil
 			} else {
 				st.children[0] = NewReStackTrie()
 				st.children[0].nodeType = 0
 				st.children[0].children[st.key[firstdiffindex]] = n
-				st.children[0].children[key[firstdiffindex]] = o
-				st.children[0].keyUntilHere = key[:firstdiffindex]
+				st.children[0].children[key[st.keyOffset+firstdiffindex]] = o
+				st.children[0].keyOffset = st.keyOffset + firstdiffindex
 				st.key = st.key[:firstdiffindex]
 			}
 		}
 
 	case leafNode: /* Leaf */
-		if bytes.Equal(st.key, key[len(st.keyUntilHere):]) {
+		if bytes.Equal(st.key, key[st.keyOffset:]) {
 			panic("Trying to insert into existing key")
 		}
 
 		firstdiffindex := 0
-		for ; st.key[firstdiffindex] == key[len(st.keyUntilHere)+firstdiffindex]; firstdiffindex++ {
+		for ; firstdiffindex < len(st.key) && st.key[firstdiffindex] == key[st.keyOffset+firstdiffindex]; firstdiffindex++ {
 		}
 
 		// Reconfigure current into extension
 		var p *ReStackTrie
-		if firstdiffindex > len(st.keyUntilHere) {
+		if firstdiffindex > 0 {
 			st.nodeType = 1
 			st.children[0] = NewReStackTrie()
 			st.children[0].nodeType = 0 // branch
-			st.children[0].keyUntilHere = key[:len(st.keyUntilHere)+firstdiffindex]
+			st.children[0].keyOffset = st.keyOffset + firstdiffindex
 			p = st.children[0]
 		} else {
 			st.nodeType = 0
@@ -387,18 +385,19 @@ func (st *ReStackTrie) insert(key, value []byte) {
 		p.children[origIdx].nodeType = 2 // leaf
 		p.children[origIdx].key = st.key[firstdiffindex+1:]
 		p.children[origIdx].val = st.val
-		p.children[origIdx].keyUntilHere = st.key[:firstdiffindex+1]
-		newIdx := key[firstdiffindex+len(st.keyUntilHere)]
+		p.children[origIdx].keyOffset = p.keyOffset + 1
+
+		newIdx := key[firstdiffindex+st.keyOffset]
 		p.children[newIdx] = NewReStackTrie()
 		p.children[newIdx].nodeType = 2 // leaf
-		p.children[newIdx].key = key[len(st.keyUntilHere)+firstdiffindex+1:]
+		p.children[newIdx].key = key[p.keyOffset+1:]
 		p.children[newIdx].val = value
-		p.children[newIdx].keyUntilHere = key[:len(st.keyUntilHere)+firstdiffindex+1]
+		p.children[newIdx].keyOffset = p.keyOffset + firstdiffindex + 1
 
 		st.key = st.key[:firstdiffindex]
 	case emptyNode: /* Empty */
 		st.nodeType = 2
-		st.key = key[len(st.keyUntilHere):]
+		st.key = key[st.keyOffset:]
 		st.val = value
 	default:
 		panic("invalid type")
@@ -406,7 +405,9 @@ func (st *ReStackTrie) insert(key, value []byte) {
 }
 
 // writeEvenHP writes a key with its hex prefix into a writer (presumably, the
-// input of a hasher).
+// input of a hasher) and then writes the value. The value can be a maximum of
+// 256 bytes, as it is only concerned with writing account leaves and optimize
+// for this use case.
 func writeHPRLP(w io.Writer, key, val []byte, leaf bool) {
 	var writer bytes.Buffer
 
@@ -445,10 +446,17 @@ func writeHPRLP(w io.Writer, key, val []byte, leaf bool) {
 		headerPos--
 	}
 
+	// If this is a leaf being inserted, the header length for the
+	// value part will be two bytes as the leaf is more than 56 bytes
+	// long.
+	valHeaderLen := 1
+	if len(val) > 56 {
+		valHeaderLen = 2
+	}
 	// Add the global header, with optional length, and specify at
 	// which byte the header is starting.
 	payloadSize := int(keyByteSize) + (len(header) - headerPos - 1) +
-		1 + len(val) /* value + rlp header */
+		valHeaderLen + len(val) /* value + rlp header */
 	var start int
 	if payloadSize > 56 {
 		header[headerPos] = byte(payloadSize)
@@ -477,10 +485,13 @@ func writeHPRLP(w io.Writer, key, val []byte, leaf bool) {
 		}
 	}
 
-	writer.Write([]byte{0x80 + byte(len(val))})
+	if leaf {
+		writer.Write([]byte{0xb8, byte(len(val))})
+	} else {
+		writer.Write([]byte{0x80 + byte(len(val))})
+	}
 	writer.Write(val)
 
-	fmt.Println(writer, leaf)
 	io.Copy(w, &writer)
 }
 
