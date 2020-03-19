@@ -17,6 +17,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/trie"
@@ -250,5 +251,27 @@ func TestStackVsStandard(t *testing.T) {
 	}
 	if got, exp := stackT.Hash(), stdT.Hash(); got != exp {
 		t.Errorf("Hash mismatch, got %x, exp %x", got, exp)
+	}
+}
+
+func TestReStackTrieLeafInsert(t *testing.T) {
+	root := trie.NewReStackTrie()
+	root.TryUpdate(common.HexToHash("1234").Bytes(), common.HexToHash("00001").Bytes())
+	root.TryUpdate(common.HexToHash("1235").Bytes(), common.HexToHash("00002").Bytes())
+	root.TryUpdate(common.HexToHash("123f").Bytes(), common.HexToHash("00003").Bytes())
+	root.TryUpdate(common.HexToHash("133f").Bytes(), common.HexToHash("00004").Bytes())
+	root.TryUpdate(common.HexToHash("233f").Bytes(), common.HexToHash("00005").Bytes())
+	root.TryUpdate(common.HexToHash("243f").Bytes(), common.HexToHash("00006").Bytes())
+	root.TryUpdate(common.HexToHash("244f").Bytes(), common.HexToHash("00007").Bytes())
+	ref, _ := trie.New(common.Hash{}, trie.NewDatabase(memorydb.New()))
+	ref.TryUpdate(common.HexToHash("1234").Bytes(), common.HexToHash("00001").Bytes())
+	ref.TryUpdate(common.HexToHash("1235").Bytes(), common.HexToHash("00002").Bytes())
+	ref.TryUpdate(common.HexToHash("123f").Bytes(), common.HexToHash("00003").Bytes())
+	ref.TryUpdate(common.HexToHash("133f").Bytes(), common.HexToHash("00004").Bytes())
+	ref.TryUpdate(common.HexToHash("233f").Bytes(), common.HexToHash("00005").Bytes())
+	ref.TryUpdate(common.HexToHash("243f").Bytes(), common.HexToHash("00006").Bytes())
+	ref.TryUpdate(common.HexToHash("244f").Bytes(), common.HexToHash("00007").Bytes())
+	if !bytes.Equal(ref.Hash().Bytes(), root.Hash().Bytes()) {
+		t.Fatalf("Invalid hash, expected %s got %s", common.ToHex(ref.Hash().Bytes()), common.ToHex(root.Hash().Bytes()))
 	}
 }

@@ -261,6 +261,7 @@ func (st *StackTrie) Hash() common.Hash {
 	h, _ := st.hasher.hash(&st.stack[0].ext, false)
 	return common.BytesToHash(h.(hashNode))
 }
+
 type ReStackTrie struct {
 	children     [16]*ReStackTrie
 	nodeType     uint8
@@ -276,12 +277,19 @@ func NewReStackTrie() *ReStackTrie {
 	}
 }
 
+const (
+	branchNode = iota
+	extNode
+	leafNode
+	emptyNode
+)
+
 func (st *ReStackTrie) TryUpdate(key, value []byte) error {
 	k := keybytesToHex(key)
 	if len(value) == 0 {
 		panic("deletion not supported")
 	}
-	st.insert(k, value)
+	st.insert(k[:len(k)-1], value)
 	return nil
 }
 
@@ -292,16 +300,14 @@ func (st *ReStackTrie) insert(key, value []byte) {
 	}
 
 	switch st.nodeType {
-	case 0:
-		/* Branch */
+	case branchNode: /* Branch */
 		idx := key[len(st.keyUntilHere)]
 		if st.children[idx] == nil {
 			st.children[idx] = NewReStackTrie()
 			st.children[idx].keyUntilHere = key[:len(st.keyUntilHere)+1]
 		}
 		st.children[idx].insert(key, value)
-	case 1:
-		/* Ext */
+	case extNode: /* Ext */
 		// key has already been checked until this point
 		if bytes.Equal(key[len(st.keyUntilHere):len(st.keyUntilHere)+len(st.key)], st.key) {
 			// Recurse
@@ -349,18 +355,18 @@ func (st *ReStackTrie) insert(key, value []byte) {
 				st.children[0].nodeType = 0
 				st.children[0].children[st.key[firstdiffindex]] = n
 				st.children[0].children[key[firstdiffindex]] = o
+				st.children[0].keyUntilHere = key[:firstdiffindex]
 				st.key = st.key[:firstdiffindex]
 			}
 		}
 
-	case 2:
-		/* Leaf */
+	case leafNode: /* Leaf */
 		if bytes.Equal(st.key, key[len(st.keyUntilHere):]) {
 			panic("Trying to insert into existing key")
 		}
 
-		firstdiffindex := len(st.keyUntilHere)
-		for ; st.key[firstdiffindex] == key[firstdiffindex]; firstdiffindex++ {
+		firstdiffindex := 0
+		for ; st.key[firstdiffindex] == key[len(st.keyUntilHere)+firstdiffindex]; firstdiffindex++ {
 		}
 
 		// Reconfigure current into extension
@@ -369,7 +375,7 @@ func (st *ReStackTrie) insert(key, value []byte) {
 			st.nodeType = 1
 			st.children[0] = NewReStackTrie()
 			st.children[0].nodeType = 0 // branch
-			st.children[0].keyUntilHere = key[:firstdiffindex]
+			st.children[0].keyUntilHere = key[:len(st.keyUntilHere)+firstdiffindex]
 			p = st.children[0]
 		} else {
 			st.nodeType = 0
@@ -382,25 +388,152 @@ func (st *ReStackTrie) insert(key, value []byte) {
 		p.children[origIdx].key = st.key[firstdiffindex+1:]
 		p.children[origIdx].val = st.val
 		p.children[origIdx].keyUntilHere = st.key[:firstdiffindex+1]
-		newIdx := key[firstdiffindex]
+		newIdx := key[firstdiffindex+len(st.keyUntilHere)]
 		p.children[newIdx] = NewReStackTrie()
 		p.children[newIdx].nodeType = 2 // leaf
-		p.children[newIdx].key = key[firstdiffindex+1:]
+		p.children[newIdx].key = key[len(st.keyUntilHere)+firstdiffindex+1:]
 		p.children[newIdx].val = value
-		p.children[newIdx].keyUntilHere = key[:firstdiffindex+1]
+		p.children[newIdx].keyUntilHere = key[:len(st.keyUntilHere)+firstdiffindex+1]
 
 		st.key = st.key[:firstdiffindex]
-	case 3:
-		/* Empty */
+	case emptyNode: /* Empty */
 		st.nodeType = 2
-		st.key = key
+		st.key = key[len(st.keyUntilHere):]
 		st.val = value
 	default:
 		panic("invalid type")
 	}
 }
 
-func (st *ReStackTrie) Hash() common.Hash {
-	return common.Hash{}
-}
+// writeEvenHP writes a key with its hex prefix into a writer (presumably, the
+// input of a hasher).
+func writeHPRLP(w io.Writer, key, val []byte, leaf bool) {
+	var writer bytes.Buffer
+
+	// Determine the _t_ part of the hex prefix
+	hp := byte(0)
+	if leaf {
+		hp = 32
+	}
+
+	const maxHeaderSize = 1 /* key byte list header */ +
+		1 /* list header for key + value */ +
+		1 /* potential size byte if total size > 56 */ +
+		1 /* hex prefix if key is even-length*/
+	header := [maxHeaderSize]byte{}
+	keyOffset := 0
+	headerPos := maxHeaderSize - 1
+
+	// Add the hex prefix to its own byte if the key length is even, and
+	// as the most significant nibble of the key if it's odd.
+	// In the latter case, the first nibble of the key will be part of
+	// the header and it will be skipped later when it's added to the
+	// hasher sponge.
+	if len(key)%2 == 0 {
+		header[headerPos] = hp
+	} else {
+		header[headerPos] = hp | key[0] | 16
+		keyOffset = 1
+	}
+	headerPos--
+
+	// Add the key byte header, the key is 32 bytes max so it's always
+	// under 56 bytes - no extra byte needed.
+	keyByteSize := byte(len(key) / 2)
+	if len(key) > 1 || header[len(header)-1] > 128 {
+		header[headerPos] = 0x80 + keyByteSize + 1 /* HP */
+		headerPos--
+	}
+
+	// Add the global header, with optional length, and specify at
+	// which byte the header is starting.
+	payloadSize := int(keyByteSize) + (len(header) - headerPos - 1) +
+		1 + len(val) /* value + rlp header */
+	var start int
+	if payloadSize > 56 {
+		header[headerPos] = byte(payloadSize)
+		headerPos--
+		header[headerPos] = 0xf8
+		start = headerPos
+	} else {
+		header[headerPos] = 0xc0 + byte(payloadSize)
+		start = headerPos
+	}
+
+	// Write the header into the sponge
+	writer.Write(header[start:])
+
+	// Write the key into the sponge
+	var m byte
+	for i, nibble := range key {
+		// Skip the first byte if the key has an odd-length, since
+		// it has already been written with the header.
+		if i >= keyOffset {
+			if (i-keyOffset)%2 == 0 {
+				m = nibble
+			} else {
+				writer.Write([]byte{m*16 + nibble})
 			}
+		}
+	}
+
+	writer.Write([]byte{0x80 + byte(len(val))})
+	writer.Write(val)
+
+	fmt.Println(writer, leaf)
+	io.Copy(w, &writer)
+}
+
+func (st *ReStackTrie) Hash() (h common.Hash) {
+	d := sha3.NewLegacyKeccak256()
+	switch st.nodeType {
+	case 0:
+		payload := [544]byte{}
+		pos := 3 // maximum header length given what we know
+		for _, v := range st.children {
+			if v != nil {
+				// Write a 32 byte list to the sponge
+				payload[pos] = 0xa0
+				pos++
+				copy(payload[pos:pos+32], v.Hash().Bytes())
+				pos += 32
+			} else {
+				// Write an empty list to the sponge
+				payload[pos] = 0x80
+				pos++
+			}
+		}
+		// Add empty 17th value
+		payload[pos] = 0x80
+		pos++
+
+		// Compute the header, length size is either 0, 1 or 2 bytes since
+		// there are at least 17 empty list headers, and at most 16 hashes
+		// plus an empty header for the value.
+		var start int
+		if pos-3 < 56 {
+			payload[2] = 0xc0 + byte(pos-3)
+			start = 2
+		} else if pos-3 < 256 {
+			payload[2] = byte(pos - 3)
+			payload[1] = 0xf8
+			start = 1
+		} else {
+			payload[2] = byte(pos - 3)
+			payload[1] = byte((pos - 3) >> 8)
+			payload[0] = 0xf9
+			start = 0
+		}
+		d.Write(payload[start:pos])
+	case 1:
+		ch := st.children[0].Hash().Bytes()
+		writeHPRLP(d, st.key, ch, false)
+	case 2:
+		writeHPRLP(d, st.key, st.val, true)
+	case 3:
+	default:
+		panic("Invalid node type")
+	}
+	d.Sum(h[:0])
+	return
+}
