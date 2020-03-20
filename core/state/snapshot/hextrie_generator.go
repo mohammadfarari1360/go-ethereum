@@ -77,6 +77,9 @@ func generateTrieRoot(it AccountIterator, generatorFn trieGeneratorFn) common.Ha
 	return result
 }
 
+// ReStackGenerate is a hexary trie builder which is built from the
+// bottom-up as keys are added. It attempts to save memory by doing
+// the RLP encoding on the fly during hashing.
 func ReStackGenerate(in chan (leaf), out chan (common.Hash)) {
 	t := trie.NewReStackTrie()
 	for leaf := range in {
