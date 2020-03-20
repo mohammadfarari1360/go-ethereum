@@ -409,8 +409,9 @@ func (st *ReStackTrie) insert(key, value []byte) {
 // input of a hasher) and then writes the value. The value can be a maximum of
 // 256 bytes, as it is only concerned with writing account leaves and optimize
 // for this use case.
-func writeHPRLP(w io.Writer, key, val []byte, leaf bool) {
-	var writer bytes.Buffer
+func writeHPRLP(writer io.Writer, key, val []byte, leaf bool) {
+	// DEBUG don't remove yet
+	//var writer bytes.Buffer
 
 	// Determine the _t_ part of the hex prefix
 	hp := byte(0)
@@ -493,7 +494,13 @@ func writeHPRLP(w io.Writer, key, val []byte, leaf bool) {
 	}
 	writer.Write(val)
 
-	io.Copy(w, &writer)
+	// DEBUG don't remove yet
+	//if leaf {
+	//fmt.Println("leaf rlp ", writer)
+	//} else {
+	//fmt.Println("ext rlp ", writer)
+	//}
+	//io.Copy(w, &writer)
 }
 
 func (st *ReStackTrie) Hash() (h common.Hash) {

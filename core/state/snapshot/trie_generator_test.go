@@ -243,7 +243,7 @@ func TestStackVsStandard(t *testing.T) {
 		{key: "04f0862f9177d381deeed0e6af3b0751f3cce6887746ba13cf41aa1c4dbf6591", value: "f8440180a014baf10561054a68fe522434b4d4c25e1b377e745bf1d676afa71bc891cacf9ba0debc58a981ca4f637e282ab5985d169a0237d03ea9336bc3434d9dce79e62ab3"},
 		{key: "04f0a6c0cb97e624bcb799f7d88717fe7fe4894877a8987a27d4792c36a2833e", value: "f8440180a0880595df1b6b3923e8036106cb641aae6b1249faa02d3217da8c556c0fff172ba06569f607421e3779a571977d84910e1177059946e0a064e487b1502e6a282623"},
 	}
-	stackT := trie.NewStackTrie()
+	stackT := trie.NewReStackTrie()
 	stdT, _ := trie.New(common.Hash{}, trie.NewDatabase(memorydb.New()))
 	for _, kv := range vals {
 		stackT.TryUpdate(common.FromHex(kv.key), common.FromHex(kv.value))
