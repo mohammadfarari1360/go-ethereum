@@ -117,7 +117,7 @@ func TestMultipleStackTrieInsertion(t *testing.T) {
 
 	var got2 common.Hash
 	it = head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
-	got2 = generateTrieRoot(it, StackGenerate)
+	got2 = generateTrieRoot(it, ReStackGenerate)
 	if got2 != got1 {
 		t.Fatalf("Error: got %x exp %x", got2, got1)
 	}

@@ -393,7 +393,7 @@ func (st *ReStackTrie) insert(key, value []byte) {
 		p.children[newIdx].nodeType = 2 // leaf
 		p.children[newIdx].key = key[p.keyOffset+1:]
 		p.children[newIdx].val = value
-		p.children[newIdx].keyOffset = p.keyOffset + firstdiffindex + 1
+		p.children[newIdx].keyOffset = p.keyOffset + 1
 
 		st.key = st.key[:firstdiffindex]
 	case emptyNode: /* Empty */

@@ -77,6 +77,14 @@ func generateTrieRoot(it AccountIterator, generatorFn trieGeneratorFn) common.Ha
 	return result
 }
 
+func ReStackGenerate(in chan (leaf), out chan (common.Hash)) {
+	t := trie.NewReStackTrie()
+	for leaf := range in {
+		t.TryUpdate(leaf.key[:], leaf.value)
+	}
+	out <- t.Hash()
+}
+
 func verifyHasher(it AccountIterator, generatorFn trieGeneratorFn, begin, end int) bool {
 	var (
 		referenceFn = StdGenerate
