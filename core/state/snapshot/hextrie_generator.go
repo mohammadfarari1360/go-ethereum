@@ -39,8 +39,8 @@ func GenerateTrieRoot(it AccountIterator) common.Hash {
 	return generateTrieRoot(it, StdGenerate)
 }
 
-func CrosscheckTriehasher(it AccountIterator, begin,end int) bool {
-	return verifyHasher(it, StackGenerate, begin, end)
+func CrosscheckTriehasher(it AccountIterator, begin, end int) bool {
+	return verifyHasher(it, ReStackGenerate, begin, end)
 }
 
 func generateTrieRoot(it AccountIterator, generatorFn trieGeneratorFn) common.Hash {
