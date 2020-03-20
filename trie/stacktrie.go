@@ -61,7 +61,6 @@ func (st *StackTrie) TryUpdate(key, value []byte) error {
 		panic("deletion not supported")
 	}
 	st.insert(&st.stack[0].ext, nil, k, valueNode(value))
-	//fmt.Println("trie=", &st.stack[0].ext)
 	return nil
 }
 
@@ -263,21 +262,26 @@ func (st *StackTrie) Hash() common.Hash {
 	return common.BytesToHash(h.(hashNode))
 }
 
+// ReStackTrie is a reimplementation of the Stacktrie, that fixes
+// bugs in the previous implementation, and which also implements
+// its own hashing mechanism which is more specific and hopefully
+// more efficient that the default hasher.
 type ReStackTrie struct {
-	children     [16]*ReStackTrie
-	nodeType     uint8
-	keyUntilHere []byte
-	val          []byte
-	key          []byte
-	keyOffset    int // offset inside the key
+	nodeType  uint8            // node type (as in branch, ext, leaf)
+	val       []byte           // value contained by this node if it's a leaf
+	key       []byte           // key chunk covered by this (full|ext) node
+	keyOffset int              // offset of the key chunk inside a full key
+	children  [16]*ReStackTrie // list of children (for fullnodes and exts)
 }
 
+// NewReStackTrie allocates and initializes an empty trie.
 func NewReStackTrie() *ReStackTrie {
 	return &ReStackTrie{
 		nodeType: 3,
 	}
 }
 
+// List all values that ReStackTrie#nodeType can hold
 const (
 	branchNode = iota
 	extNode
@@ -294,8 +298,19 @@ func (st *ReStackTrie) TryUpdate(key, value []byte) error {
 	return nil
 }
 
-func (st *ReStackTrie) insert(key, value []byte) {
+// Helper function that, given a full key, determines the index
+// at which the chunk pointed by st.keyOffset is different from
+// the same chunk in the full key.
+func (st *ReStackTrie) getDiffIndex(key []byte) int {
+	diffindex := 0
+	for ; diffindex < len(st.key) && st.key[diffindex] == key[st.keyOffset+diffindex]; diffindex++ {
+	}
+	return diffindex
+}
 
+// Helper function to that inserts a (key, value) pair into
+// the trie.
+func (st *ReStackTrie) insert(key, value []byte) {
 	switch st.nodeType {
 	case branchNode: /* Branch */
 		idx := key[st.keyOffset]
@@ -305,26 +320,27 @@ func (st *ReStackTrie) insert(key, value []byte) {
 		}
 		st.children[idx].insert(key, value)
 	case extNode: /* Ext */
-		// key has already been checked until this point
-		firstdiffindex := 0
-		for ; firstdiffindex < len(st.key) && st.key[firstdiffindex] == key[firstdiffindex+st.keyOffset]; firstdiffindex++ {
-		}
+		// Compare both key chunks and see where they differ
+		diffidx := st.getDiffIndex(key)
 
-		if firstdiffindex == len(st.key) {
+		// Check if chunks are identical. If so, recurse into
+		// the child node. Otherwise, the key has to be split
+		// into 1) an optional common prefix, 2) the fullnode
+		// representing the two differing path, and 3) a leaf
+		// for each of the differentiated subtrees.
+		if diffidx == len(st.key) {
 			// Ext key and key segment are identical, recurse into
-			// child node.
+			// the child node.
 			st.children[0].insert(key, value)
 		} else {
-			// Split
-
 			// Save the original part. Depending if the break is
 			// at the extension's last byte or not, create an
 			// intermediate extension or use the extension's child
 			// node directly.
 			var n *ReStackTrie
-			if firstdiffindex < len(st.key)-1 {
+			if diffidx < len(st.key)-1 {
 				n = NewReStackTrie()
-				n.key = st.key[firstdiffindex+1:]
+				n.key = st.key[diffidx+1:]
 				n.children[0] = st.children[0]
 				n.nodeType = 1
 			} else {
@@ -332,72 +348,90 @@ func (st *ReStackTrie) insert(key, value []byte) {
 				// an extension node: reuse the current node
 				n = st.children[0]
 			}
-			n.keyOffset = st.keyOffset + firstdiffindex + 1
+			n.keyOffset = st.keyOffset + diffidx + 1
 
 			// Create a leaf for the inserted part
 			o := NewReStackTrie()
-			o.keyOffset = st.keyOffset + firstdiffindex + 1
+			o.keyOffset = st.keyOffset + diffidx + 1
 			o.key = key[o.keyOffset:]
 			o.val = value
-			o.nodeType = 2
+			o.nodeType = leafNode
 
-			// Reconfigure current
-			if firstdiffindex == 0 {
-				// Break on the 1st byte?
+			// Insert both child leaves where they belong:
+			if diffidx == 0 {
+				// the break is on the first byte, so
+				// the current node is converted into
+				// a branch node.
 				st.children[0] = nil
-				st.children[st.key[firstdiffindex]] = n
-				st.children[key[st.keyOffset+firstdiffindex]] = o
-				st.nodeType = 0
+				st.children[st.key[diffidx]] = n
+				st.children[key[st.keyOffset+diffidx]] = o
+				st.nodeType = branchNode
 				st.key = nil
 			} else {
+				// the common prefix is at least one byte
+				// long, insert a new intermediate branch
+				// node.
 				st.children[0] = NewReStackTrie()
-				st.children[0].nodeType = 0
-				st.children[0].children[st.key[firstdiffindex]] = n
-				st.children[0].children[key[st.keyOffset+firstdiffindex]] = o
-				st.children[0].keyOffset = st.keyOffset + firstdiffindex
-				st.key = st.key[:firstdiffindex]
+				st.children[0].nodeType = branchNode
+				st.children[0].children[st.key[diffidx]] = n
+				st.children[0].children[key[st.keyOffset+diffidx]] = o
+				st.children[0].keyOffset = st.keyOffset + diffidx
+				st.key = st.key[:diffidx]
 			}
 		}
 
 	case leafNode: /* Leaf */
-		if bytes.Equal(st.key, key[st.keyOffset:]) {
+		// Compare both key chunks and see where they differ
+		diffidx := st.getDiffIndex(key)
+
+		// Overwriting a key isn't supported, which means that
+		// the current leaf is expected to be split into 1) an
+		// optional extension for the common prefix of these 2
+		// keys, 2) a fullnode selecting the path on which the
+		// keys differ, and 3) one leaf for the differentiated
+		// component of each key.
+		if diffidx >= len(st.key) {
 			panic("Trying to insert into existing key")
 		}
 
-		firstdiffindex := 0
-		for ; firstdiffindex < len(st.key) && st.key[firstdiffindex] == key[st.keyOffset+firstdiffindex]; firstdiffindex++ {
-		}
-
-		// Reconfigure current into extension
+		// Check if the split occurs at the first nibble of the
+		// chunk. In that case, no prefix extnode is necessary.
+		// Otherwise, create that
 		var p *ReStackTrie
-		if firstdiffindex > 0 {
-			st.nodeType = 1
-			st.children[0] = NewReStackTrie()
-			st.children[0].nodeType = 0 // branch
-			st.children[0].keyOffset = st.keyOffset + firstdiffindex
-			p = st.children[0]
-		} else {
-			st.nodeType = 0
+		if diffidx == 0 {
+			// Convert current leaf into a branch
+			st.nodeType = branchNode
 			p = st
 			st.children[0] = nil
+		} else {
+			// Convert current node into an ext,
+			// and insert a child branch node.
+			st.nodeType = extNode
+			st.children[0] = NewReStackTrie()
+			st.children[0].nodeType = branchNode
+			st.children[0].keyOffset = st.keyOffset + diffidx
+			p = st.children[0]
 		}
-		origIdx := st.key[firstdiffindex]
+
+		// Create the two child leaves: the one containing the
+		// original value and the one containing the new value
+		origIdx := st.key[diffidx]
 		p.children[origIdx] = NewReStackTrie()
-		p.children[origIdx].nodeType = 2 // leaf
-		p.children[origIdx].key = st.key[firstdiffindex+1:]
+		p.children[origIdx].nodeType = leafNode
+		p.children[origIdx].key = st.key[diffidx+1:]
 		p.children[origIdx].val = st.val
 		p.children[origIdx].keyOffset = p.keyOffset + 1
 
-		newIdx := key[firstdiffindex+st.keyOffset]
+		newIdx := key[diffidx+st.keyOffset]
 		p.children[newIdx] = NewReStackTrie()
-		p.children[newIdx].nodeType = 2 // leaf
+		p.children[newIdx].nodeType = leafNode
 		p.children[newIdx].key = key[p.keyOffset+1:]
 		p.children[newIdx].val = value
 		p.children[newIdx].keyOffset = p.keyOffset + 1
 
-		st.key = st.key[:firstdiffindex]
+		st.key = st.key[:diffidx]
 	case emptyNode: /* Empty */
-		st.nodeType = 2
+		st.nodeType = leafNode
 		st.key = key[st.keyOffset:]
 		st.val = value
 	default:
@@ -455,6 +489,7 @@ func writeHPRLP(writer io.Writer, key, val []byte, leaf bool) {
 	if len(val) > 56 {
 		valHeaderLen = 2
 	}
+
 	// Add the global header, with optional length, and specify at
 	// which byte the header is starting.
 	payloadSize := int(keyByteSize) + (len(header) - headerPos - 1) +
