@@ -157,7 +157,12 @@ func BenchmarkTrieGeneration(b *testing.B) {
 		snaps.Update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, makeAccounts(4000), nil)
 		head := snaps.Snapshot(common.HexToHash("0x02"))
 		// Call it once to make it create the lists before test starts
-		head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
+		it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
+		// Run the standard version once without the timer, to get the
+		// correct value. This will warm the cache and make StdGenerate
+		// appear a bit faster than it really is.
+		exp := generateTrieRoot(it, StdGenerate)
+
 		b.Run("standard", func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
@@ -167,7 +172,7 @@ func BenchmarkTrieGeneration(b *testing.B) {
 				got = generateTrieRoot(it, StdGenerate)
 			}
 			b.StopTimer()
-			if exp := common.HexToHash("fecc4e1fce05c888c8acc8baa2d7677a531714668b7a09b5ede6e3e110be266b"); got != exp {
+			if got != exp {
 				b.Fatalf("Error: got %x exp %x", got, exp)
 			}
 		})
@@ -180,7 +185,7 @@ func BenchmarkTrieGeneration(b *testing.B) {
 				got = generateTrieRoot(it, PruneGenerate)
 			}
 			b.StopTimer()
-			if exp := common.HexToHash("fecc4e1fce05c888c8acc8baa2d7677a531714668b7a09b5ede6e3e110be266b"); got != exp {
+			if got != exp {
 				b.Fatalf("Error: got %x exp %x", got, exp)
 			}
 
@@ -191,10 +196,10 @@ func BenchmarkTrieGeneration(b *testing.B) {
 			var got common.Hash
 			for i := 0; i < b.N; i++ {
 				it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
-				got = generateTrieRoot(it, StackGenerate)
+				got = generateTrieRoot(it, ReStackGenerate)
 			}
 			b.StopTimer()
-			if exp := common.HexToHash("fecc4e1fce05c888c8acc8baa2d7677a531714668b7a09b5ede6e3e110be266b"); got != exp {
+			if got != exp {
 				b.Fatalf("Error: got %x exp %x", got, exp)
 			}
 
@@ -205,29 +210,48 @@ func BenchmarkTrieGeneration(b *testing.B) {
 		snaps.Update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, makeAccounts(10000), nil)
 		head := snaps.Snapshot(common.HexToHash("0x02"))
 		// Call it once to make it create the lists before test starts
-		head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
+		it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
+		// Run the standard version once without the timer, to get the
+		// correct value. This will warm the cache and make StdGenerate
+		// appear a bit faster than it really is.
+		exp := generateTrieRoot(it, StdGenerate)
 		b.Run("standard", func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
+			var got common.Hash
 			for i := 0; i < b.N; i++ {
 				it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
-				generateTrieRoot(it, StdGenerate)
+				got = generateTrieRoot(it, StdGenerate)
+			}
+			b.StopTimer()
+			if got != exp {
+				b.Fatalf("Error: got %x exp %x", got, exp)
 			}
 		})
 		b.Run("pruning", func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
+			var got common.Hash
 			for i := 0; i < b.N; i++ {
 				it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
-				generateTrieRoot(it, PruneGenerate)
+				got = generateTrieRoot(it, PruneGenerate)
+			}
+			b.StopTimer()
+			if got != exp {
+				b.Fatalf("Error: got %x exp %x", got, exp)
 			}
 		})
 		b.Run("stack", func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
+			var got common.Hash
 			for i := 0; i < b.N; i++ {
 				it := head.(*diffLayer).AccountIterator(common.HexToHash("0x00"))
-				generateTrieRoot(it, StackGenerate)
+				got = generateTrieRoot(it, ReStackGenerate)
+			}
+			b.StopTimer()
+			if got != exp {
+				b.Fatalf("Error: got %x exp %x", got, exp)
 			}
 		})
 	})
