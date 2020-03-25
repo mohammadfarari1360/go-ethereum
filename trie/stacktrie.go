@@ -19,6 +19,7 @@ package trie
 import (
 	"bytes"
 	"io"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/crypto/sha3"
@@ -274,6 +275,12 @@ type ReStackTrie struct {
 	children  [16]*ReStackTrie // list of children (for fullnodes and exts)
 }
 
+var reStackTriePool = sync.Pool{
+	New: func() interface{} {
+		return NewReStackTrie()
+	},
+}
+
 // NewReStackTrie allocates and initializes an empty trie.
 func NewReStackTrie() *ReStackTrie {
 	return &ReStackTrie{
@@ -316,8 +323,10 @@ func (st *ReStackTrie) insert(key, value []byte) {
 	case branchNode: /* Branch */
 		idx := key[st.keyOffset]
 		if st.children[idx] == nil {
-			st.children[idx] = NewReStackTrie()
+			st.children[idx] = reStackTriePool.Get().(*ReStackTrie)
+			st.children[idx].nodeType = emptyNode
 			st.children[idx].keyOffset = st.keyOffset + 1
+			st.children[idx].key = st.key
 		}
 		for i := idx - 1; i >= 0; i-- {
 			if st.children[i] != nil {
@@ -352,7 +361,7 @@ func (st *ReStackTrie) insert(key, value []byte) {
 			// node directly.
 			var n *ReStackTrie
 			if diffidx < len(st.key)-1 {
-				n = NewReStackTrie()
+				n = reStackTriePool.Get().(*ReStackTrie)
 				n.key = st.key[diffidx+1:]
 				n.children[0] = st.children[0]
 				n.nodeType = 1
@@ -364,7 +373,7 @@ func (st *ReStackTrie) insert(key, value []byte) {
 			n.keyOffset = st.keyOffset + diffidx + 1
 
 			// Create a leaf for the inserted part
-			o := NewReStackTrie()
+			o := reStackTriePool.Get().(*ReStackTrie)
 			o.keyOffset = st.keyOffset + diffidx + 1
 			o.key = key[o.keyOffset:]
 			o.val = value
@@ -384,11 +393,12 @@ func (st *ReStackTrie) insert(key, value []byte) {
 				// the common prefix is at least one byte
 				// long, insert a new intermediate branch
 				// node.
-				st.children[0] = NewReStackTrie()
+				st.children[0] = reStackTriePool.Get().(*ReStackTrie)
 				st.children[0].nodeType = branchNode
 				st.children[0].children[st.key[diffidx]] = n
 				st.children[0].children[key[st.keyOffset+diffidx]] = o
 				st.children[0].keyOffset = st.keyOffset + diffidx
+				st.children[0].key = st.key
 				st.key = st.key[:diffidx]
 			}
 		}
@@ -420,9 +430,10 @@ func (st *ReStackTrie) insert(key, value []byte) {
 			// Convert current node into an ext,
 			// and insert a child branch node.
 			st.nodeType = extNode
-			st.children[0] = NewReStackTrie()
+			st.children[0] = reStackTriePool.Get().(*ReStackTrie)
 			st.children[0].nodeType = branchNode
 			st.children[0].keyOffset = st.keyOffset + diffidx
+			st.children[0].key = st.key
 			p = st.children[0]
 		}
 
@@ -431,7 +442,7 @@ func (st *ReStackTrie) insert(key, value []byte) {
 		// The child leave will be hashed directly in order to
 		// free up some memory.
 		origIdx := st.key[diffidx]
-		p.children[origIdx] = NewReStackTrie()
+		p.children[origIdx] = reStackTriePool.Get().(*ReStackTrie)
 		p.children[origIdx].nodeType = leafNode
 		p.children[origIdx].key = st.key[diffidx+1:]
 		p.children[origIdx].val = st.val
@@ -442,7 +453,7 @@ func (st *ReStackTrie) insert(key, value []byte) {
 		p.children[origIdx].key = nil
 
 		newIdx := key[diffidx+st.keyOffset]
-		p.children[newIdx] = NewReStackTrie()
+		p.children[newIdx] = reStackTriePool.Get().(*ReStackTrie)
 		p.children[newIdx].nodeType = leafNode
 		p.children[newIdx].key = key[p.keyOffset+1:]
 		p.children[newIdx].val = value
@@ -577,6 +588,7 @@ func (st *ReStackTrie) Hash() (h common.Hash) {
 				pos++
 				copy(payload[pos:pos+32], v.Hash().Bytes())
 				pos += 32
+				reStackTriePool.Put(st.children[i])
 				st.children[i] = nil // Reclaim mem from subtree
 			} else {
 				// Write an empty list to the sponge
@@ -609,6 +621,7 @@ func (st *ReStackTrie) Hash() (h common.Hash) {
 	case extNode:
 		ch := st.children[0].Hash().Bytes()
 		writeHPRLP(d, st.key, ch, false)
+		reStackTriePool.Put(st.children[0])
 		st.children[0] = nil // Reclaim mem from subtree
 	case leafNode:
 		writeHPRLP(d, st.key, st.val, true)
