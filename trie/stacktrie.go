@@ -559,7 +559,6 @@ func writeHPRLP(writer io.Writer, key, val []byte, leaf bool) {
 	//io.Copy(w, &writer)
 }
 
-
 func (st *ReStackTrie) hash() []byte {
 	/* Shortcut if node is already hashed */
 	if st.nodeType == hashedNode {
