@@ -314,7 +314,7 @@ func (st *ReStackTrie) getDiffIndex(key []byte) int {
 func (st *ReStackTrie) insert(key, value []byte) {
 	switch st.nodeType {
 	case branchNode: /* Branch */
-		idx := key[st.keyOffset]
+		idx := int(key[st.keyOffset])
 		if st.children[idx] == nil {
 			st.children[idx] = NewReStackTrie()
 			st.children[idx].keyOffset = st.keyOffset + 1
