@@ -100,6 +100,25 @@ will traverse the whole trie from the given root and will abort if any reference
 node is missing. This command can be used for trie integrity verification.
 `,
 			},
+			{
+				Name:      "count-state",
+				Usage:     "Count the biggest contracts",
+				ArgsUsage: "<root>",
+				Action:    utils.MigrateFlags(countState),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.RopstenFlag,
+					utils.RinkebyFlag,
+					utils.GoerliFlag,
+					utils.LegacyTestnetFlag,
+				},
+				Description: `
+geth snapshot traverse-state <state-root>
+will traverse the whole trie from the given root and will abort if any referenced
+node is missing. This command can be used for trie integrity verification.
+`,
+			},
 		},
 	}
 )
@@ -230,6 +249,91 @@ func traverseState(ctx *cli.Context) error {
 		}
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
+			lastReport = time.Now()
+		}
+	}
+	if accIter.Err != nil {
+		log.Crit("Failed to traverse state trie", "root", root, "error", accIter.Err)
+	}
+	log.Info("State is complete", "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+func countState(ctx *cli.Context) error {
+	glogger := log.NewGlogHandler(log.StreamHandler(os.Stderr, log.TerminalFormat(true)))
+	glogger.Verbosity(log.LvlInfo)
+	log.Root().SetHandler(glogger)
+
+	stack := makeFullNode(ctx)
+	defer stack.Close()
+
+	_, chaindb := utils.MakeChain(ctx, stack)
+	defer chaindb.Close()
+
+	if ctx.NArg() > 1 {
+		log.Crit("Too many arguments given")
+	}
+	var root = rawdb.ReadSnapshotRoot(chaindb)
+	if ctx.NArg() == 1 {
+		root = common.HexToHash(ctx.Args()[0])
+	}
+	t, err := trie.NewSecure(root, trie.NewDatabase(chaindb))
+	if err != nil {
+		log.Crit("Failed to open trie", "root", root, "error", err)
+	}
+	var (
+		accounts   int
+		slots      int
+		codes      int
+		lastReport time.Time
+		start      = time.Now()
+	)
+	file, err := os.OpenFile("sizes.dat", os.O_CREATE  | os.O_WRONLY, 0644)
+	if err != nil {
+		panic(fmt.Sprintf("could not open file: %v", err))
+	}
+	defer file.Close()
+
+	accIter := trie.NewIterator(t.NodeIterator(nil))
+	for accIter.Next() {
+		slotCount := 0
+		accounts += 1
+		var acc struct {
+			Nonce    uint64
+			Balance  *big.Int
+			Root     common.Hash
+			CodeHash []byte
+		}
+		if err := rlp.DecodeBytes(accIter.Value, &acc); err != nil {
+			log.Crit("Invalid account encountered during traversal", "error", err)
+		}
+		if acc.Root != emptyRoot {
+			storageTrie, err := trie.NewSecure(acc.Root, trie.NewDatabase(chaindb))
+			if err != nil {
+				log.Crit("Failed to open storage trie", "root", acc.Root, "error", err)
+			}
+			storageIter := trie.NewIterator(storageTrie.NodeIterator(nil))
+			for storageIter.Next() {
+				slots++
+				slotCount++
+			}
+			if storageIter.Err != nil {
+				log.Crit("Failed to traverse storage trie", "root", acc.Root, "error", storageIter.Err)
+			}
+		}
+		codeSize := 0
+		if !bytes.Equal(acc.CodeHash, emptyCode) {
+			has, _ := chaindb.Has(acc.CodeHash)
+			if !has {
+				log.Crit("Code is missing", "account", common.BytesToHash(accIter.Key))
+			} else {
+				c, _ := chaindb.Get(acc.CodeHash)
+				codeSize = len(c)
+			}
+		}
+		file.WriteString(fmt.Sprintf("%x %d %d\n", accIter.Key, slotCount, codeSize))
+		if time.Since(lastReport) > time.Second*8 {
+			log.Info("Counting state entries", "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
 	}
