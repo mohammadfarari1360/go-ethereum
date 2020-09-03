@@ -331,7 +331,8 @@ func countState(ctx *cli.Context) error {
 				codeSize = len(c)
 			}
 		}
-		file.WriteString(fmt.Sprintf("%x %d %d\n", accIter.Key, slotCount, codeSize))
+		address := rawdb.ReadPreimage(chaindb, common.BytesToHash(accIter.Key))
+		file.WriteString(fmt.Sprintf("%x %d %d\n", address, slotCount, codeSize))
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Counting state entries", "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
