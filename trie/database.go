@@ -101,11 +101,7 @@ func (n rawNode) fstring(ind string) string { panic("this should never end up in
 
 func (n rawNode) EncodeRLP(w io.Writer) error {
 	_, err := w.Write([]byte(n))
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // rawFullNode represents only the useful data content of a full node, with the
