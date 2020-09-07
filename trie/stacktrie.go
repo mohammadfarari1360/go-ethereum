@@ -280,7 +280,6 @@ func (st *StackTrie) hash() {
 	/* Shortcut if node is already hashed */
 	if st.nodeType == hashedNode {
 		return
-		//return st.val
 	}
 	// The 'hasher' is taken from a pool, but we don't actually
 	// claim an instance until all children are done with their hashing,
@@ -379,9 +378,9 @@ func (st *StackTrie) hash() {
 func (st *StackTrie) Hash() (h common.Hash) {
 	st.hash()
 	if len(st.val) != 32 {
-		// If the nodetype isn't hashedNode, the preimage
-		// (the  rlp-encoding of the node). For the top level node, we need
-		// to force the hashing
+		// If the node's RLP isn't 32 bytes long, the node will not
+		// be hashed, and instead contain the  rlp-encoding of the
+		// node. For the top level node, we need to force the hashing.
 		ret := make([]byte, 32)
 		h := newHasher(false)
 		defer returnHasherToPool(h)
