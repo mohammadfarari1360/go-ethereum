@@ -371,7 +371,6 @@ func (st *StackTrie) hash() {
 		// Do all db implementations copy the value provided?
 		st.db.Put(st.val, h.tmp)
 	}
-	return
 }
 
 // Hash returns the hash of the current node
