@@ -68,23 +68,16 @@ func newLeaf(ko int, key, val []byte, db ethdb.KeyValueStore) *StackTrie {
 	st := stackTrieFromPool(db)
 	st.nodeType = leafNode
 	st.keyOffset = ko
-	st.key = key[ko:]
+	st.key = append(st.key, key[ko:]...)
 	st.val = val
 	return st
-}
-
-func (st *StackTrie) convertToHash() {
-	st.keyOffset = 0
-	st.val = st.hash()
-	st.nodeType = hashedNode
-	st.key = nil
 }
 
 func newExt(ko int, key []byte, child *StackTrie, db ethdb.KeyValueStore) *StackTrie {
 	st := stackTrieFromPool(db)
 	st.nodeType = extNode
 	st.keyOffset = ko
-	st.key = key[ko:]
+	st.key = append(st.key, key[ko:]...)
 	st.children[0] = child
 	return st
 }
@@ -116,8 +109,8 @@ func (st *StackTrie) Update(key, value []byte) {
 
 func (st *StackTrie) Reset() {
 	st.db = nil
-	st.key = nil
-	st.val = nil
+	st.key = st.key[:0]
+	st.val = st.val[:0]
 	for i := range st.children {
 		st.children[i] = nil
 	}
@@ -145,9 +138,7 @@ func (st *StackTrie) insert(key, value []byte) {
 		for i := idx - 1; i >= 0; i-- {
 			if st.children[i] != nil {
 				if st.children[i].nodeType != hashedNode {
-					st.children[i].val = st.children[i].hash()
-					st.children[i].key = nil
-					st.children[i].nodeType = hashedNode
+					st.children[i].hash()
 				}
 				break
 			}
@@ -185,7 +176,8 @@ func (st *StackTrie) insert(key, value []byte) {
 			// an extension node: reuse the current node
 			n = st.children[0]
 		}
-
+		// Convert to hash
+		n.hash()
 		var p *StackTrie
 		if diffidx == 0 {
 			// the break is on the first byte, so
@@ -203,11 +195,6 @@ func (st *StackTrie) insert(key, value []byte) {
 			st.children[0].keyOffset = st.keyOffset + diffidx
 			p = st.children[0]
 		}
-
-		n.val = n.hash()
-		n.nodeType = hashedNode
-		n.key = nil
-
 		// Create a leaf for the inserted part
 		o := newLeaf(st.keyOffset+diffidx+1, key, value, st.db)
 
@@ -257,7 +244,7 @@ func (st *StackTrie) insert(key, value []byte) {
 		// free up some memory.
 		origIdx := st.key[diffidx]
 		p.children[origIdx] = newLeaf(diffidx+1, st.key, st.val, st.db)
-		p.children[origIdx].convertToHash()
+		p.children[origIdx].hash()
 
 		newIdx := key[diffidx+st.keyOffset]
 		p.children[newIdx] = newLeaf(p.keyOffset+1, key, value, st.db)
@@ -277,10 +264,23 @@ func (st *StackTrie) insert(key, value []byte) {
 	}
 }
 
-func (st *StackTrie) hash() []byte {
+// hash() hashes the node 'st' and converts it into 'hashedNode', if possible.
+// Possible outcomes:
+// 1. The rlp-encoded value was >= 32 bytes:
+//  - Then the 32-byte `hash` will be accessible in `st.val`.
+//  - And the 'st.type' will be 'hashedNode'
+// 2. The rlp-encoded value was < 32 bytes
+//  - Then the <32 byte rlp-encoded value will be accessible in 'st.val'.
+//  - And the 'st.type' will be 'hashedNode' AGAIN
+//
+// This method will also:
+// set 'st.type' to hashedNode
+// clear 'st.key'
+func (st *StackTrie) hash() {
 	/* Shortcut if node is already hashed */
 	if st.nodeType == hashedNode {
-		return st.val
+		return
+		//return st.val
 	}
 	// The 'hasher' is taken from a pool, but we don't actually
 	// claim an instance until all children are done with their hashing,
@@ -295,11 +295,11 @@ func (st *StackTrie) hash() []byte {
 				nodes[i] = nilValueNode
 				continue
 			}
-			childhash := child.hash()
-			if len(childhash) < 32 {
-				nodes[i] = rawNode(childhash)
+			child.hash()
+			if len(child.val) < 32 {
+				nodes[i] = rawNode(child.val)
 			} else {
-				nodes[i] = hashNode(childhash)
+				nodes[i] = hashNode(child.val)
 			}
 			st.children[i] = nil // Reclaim mem from subtree
 			returnToPool(child)
@@ -315,10 +315,16 @@ func (st *StackTrie) hash() []byte {
 		h = newHasher(false)
 		defer returnHasherToPool(h)
 		h.tmp.Reset()
-		// This format is easier on memory than a shortNode
+		st.children[0].hash()
+		// This is also possible:
+		//sz := hexToCompactInPlace(st.key)
+		//n := [][]byte{
+		//	st.key[:sz],
+		//	st.children[0].val,
+		//}
 		n := [][]byte{
 			hexToCompact(st.key),
-			st.children[0].hash(),
+			st.children[0].val,
 		}
 		if err := rlp.Encode(&h.tmp, n); err != nil {
 			panic(err)
@@ -329,42 +335,53 @@ func (st *StackTrie) hash() []byte {
 		h = newHasher(false)
 		defer returnHasherToPool(h)
 		h.tmp.Reset()
-		// This format is easier on memory than a shortNode
-		n := [][]byte{
-			hexToCompact(append(st.key, byte(16))),
-			st.val,
-		}
+		st.key = append(st.key, byte(16))
+		sz := hexToCompactInPlace(st.key)
+		n := [][]byte{st.key[:sz], st.val}
 		if err := rlp.Encode(&h.tmp, n); err != nil {
 			panic(err)
 		}
 	case emptyNode:
-		return emptyRoot[:]
+		st.val = st.val[:0]
+		st.val = append(st.val, emptyRoot[:]...)
+		st.key = st.key[:0]
+		st.nodeType = hashedNode
+		return
 	default:
 		panic("Invalid node type")
 	}
+	st.key = st.key[:0]
+	st.nodeType = hashedNode
 	if len(h.tmp) < 32 {
-		buf := make([]byte, len(h.tmp))
-		copy(buf, h.tmp)
-		return buf
+		st.val = st.val[:0]
+		st.val = append(st.val, h.tmp...)
+		return
 	}
-	ret := make([]byte, 32)
+	// Going to write the hash to the 'val'. Need to ensure it's properly sized first
+	// Typically, 'branchNode's will have no 'val', and require this allocation
+	if required := 32 - len(st.val); required > 0 {
+		buf := make([]byte, required)
+		st.val = append(st.val, buf...)
+	}
+	st.val = st.val[:32]
 	h.sha.Reset()
 	h.sha.Write(h.tmp)
-	h.sha.Read(ret)
-
+	h.sha.Read(st.val)
 	if st.db != nil {
 		// TODO! Is it safe to Put the slice here?
 		// Do all db implementations copy the value provided?
-		st.db.Put(ret, h.tmp)
+		st.db.Put(st.val, h.tmp)
 	}
-	return ret
+	return
 }
 
 // Hash returns the hash of the current node
 func (st *StackTrie) Hash() (h common.Hash) {
-	st.val = st.hash()
-	st.nodeType = hashedNode
-	if len(st.val) < 32 {
+	st.hash()
+	if len(st.val) != 32 {
+		// If the nodetype isn't hashedNode, the preimage
+		// (the  rlp-encoding of the node). For the top level node, we need
+		// to force the hashing
 		ret := make([]byte, 32)
 		h := newHasher(false)
 		defer returnHasherToPool(h)
@@ -383,6 +400,7 @@ func (st *StackTrie) Commit(db ethdb.KeyValueStore) common.Hash {
 	defer func() {
 		st.db = oldDb
 	}()
-	h := common.BytesToHash(st.hash())
+	st.hash()
+	h := common.BytesToHash(st.val)
 	return h
 }

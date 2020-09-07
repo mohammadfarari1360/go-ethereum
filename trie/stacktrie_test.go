@@ -7,10 +7,8 @@ import (
 	mrand "math/rand"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/rlp"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
@@ -157,16 +155,18 @@ func newDummy(seed int) *dummyDerivableList {
 	d := &dummyDerivableList{}
 	src := mrand.NewSource(int64(seed))
 	// don't use lists longer than 4K items
-	d.len = int(src.Int63() & 0x000F)
+	d.len = int(src.Int63() & 0x0FFF)
 	d.seed = seed
 	return d
 }
+
 func (d *dummyDerivableList) Len() int {
 	return d.len
 }
+
 func (d *dummyDerivableList) GetRlp(i int) []byte {
 	src := mrand.NewSource(int64(d.seed + i))
-	// max item size 4k, at least 1 byte per item
+	// max item size 256, at least 1 byte per item
 	size := 1 + src.Int63()&0x00FF
 	data := make([]byte, size)
 	_, err := mrand.New(src).Read(data)
@@ -186,16 +186,17 @@ func printList(l types.DerivableList) {
 	fmt.Printf("},\n")
 }
 
-func xTestDeriveShaLongtime(t *testing.T) {
+func TestFuzzDeriveSha(t *testing.T) {
+	// increase this for longer runs -- it's set to quite low for travis
+	rndSeed := mrand.Int()
 	for i := 0; i < 10; i++ {
+		seed := rndSeed + i
 		exp := types.DeriveSha(newDummy(i), newEmpty())
 		got := types.DeriveSha(newDummy(i), NewStackTrie(nil))
 		if !bytes.Equal(got[:], exp[:]) {
-			printList(newDummy(i))
-
-			t.Fatalf("seed %d: got %x exp %x", i, got, exp)
+			printList(newDummy(seed))
+			t.Fatalf("seed %d: got %x exp %x", seed, got, exp)
 		}
-
 	}
 }
 
@@ -231,27 +232,11 @@ func TestDerivableList(t *testing.T) {
 			"0xca410605310cdc3bb8d4977ae4f0143df54a724ed873457e2272f39d66e0460e971d9d",
 		},
 	}
-	for i, tc := range tcs {
+	for i, tc := range tcs[1:] {
 		exp := types.DeriveSha(newFlatList(tc), newEmpty())
 		got := types.DeriveSha(newFlatList(tc), NewStackTrie(nil))
 		if !bytes.Equal(got[:], exp[:]) {
 			t.Fatalf("case %d: got %x exp %x", i, got, exp)
 		}
-	}
-}
-
-// Verify key ordering - todo delete thisq
-func xTestFoo(t *testing.T) {
-	for i := 1; i <= 0x7f; i++ {
-		d, _ := rlp.EncodeToBytes(uint(i))
-		fmt.Printf("i %d => d: %x\n", i, d)
-	}
-	i := 0
-	d, _ := rlp.EncodeToBytes(uint(i))
-	fmt.Printf("i %d => d: %x\n", i, d)
-
-	for i := 0x80; i < 0x88; i++ {
-		d, _ := rlp.EncodeToBytes(uint(i))
-		fmt.Printf("i %d => d: %x\n", i, d)
 	}
 }
