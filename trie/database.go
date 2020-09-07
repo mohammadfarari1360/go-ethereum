@@ -100,12 +100,12 @@ func (n rawNode) cache() (hashNode, bool)   { panic("this should never end up in
 func (n rawNode) fstring(ind string) string { panic("this should never end up in a live trie") }
 
 func (n rawNode) EncodeRLP(w io.Writer) error {
-	count, err := w.Write([]byte(n))
-	if err != nil && count != len(n) {
-		err = fmt.Errorf("rawNode: could not write full length")
+	_, err := w.Write([]byte(n))
+	if err != nil {
+		return err
 	}
 
-	return err
+	return nil
 }
 
 // rawFullNode represents only the useful data content of a full node, with the
