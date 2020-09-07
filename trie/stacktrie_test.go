@@ -2,10 +2,13 @@ package trie
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
+	mrand "math/rand"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
@@ -140,5 +143,100 @@ func BenchmarkDeriveSha200(b *testing.B) {
 	})
 	if got != exp {
 		b.Errorf("got %x exp %x", got, exp)
+	}
+}
+
+type dummyDerivableList struct {
+	len  int
+	seed int
+}
+
+func newDummy(seed int) *dummyDerivableList {
+	d := &dummyDerivableList{}
+	src := mrand.NewSource(int64(seed))
+	// don't use lists longer than 4K items
+	d.len = int(src.Int63() & 0x0FFF)
+	d.seed = seed
+	return d
+}
+
+func (d *dummyDerivableList) Len() int {
+	return d.len
+}
+
+func (d *dummyDerivableList) GetRlp(i int) []byte {
+	src := mrand.NewSource(int64(d.seed + i))
+	// max item size 256, at least 1 byte per item
+	size := 1 + src.Int63()&0x00FF
+	data := make([]byte, size)
+	_, err := mrand.New(src).Read(data)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func printList(l types.DerivableList) {
+	fmt.Printf("list length: %d\n", l.Len())
+	fmt.Printf("{\n")
+	for i := 0; i < l.Len(); i++ {
+		v := l.GetRlp(i)
+		fmt.Printf("\"0x%x\",\n", v)
+	}
+	fmt.Printf("},\n")
+}
+
+func TestFuzzDeriveSha(t *testing.T) {
+	// increase this for longer runs -- it's set to quite low for travis
+	rndSeed := mrand.Int()
+	for i := 0; i < 10; i++ {
+		seed := rndSeed + i
+		exp := types.DeriveSha(newDummy(i), newEmpty())
+		got := types.DeriveSha(newDummy(i), NewStackTrie(nil))
+		if !bytes.Equal(got[:], exp[:]) {
+			printList(newDummy(seed))
+			t.Fatalf("seed %d: got %x exp %x", seed, got, exp)
+		}
+	}
+}
+
+type flatList struct {
+	rlpvals []string
+}
+
+func newFlatList(rlpvals []string) *flatList {
+	return &flatList{rlpvals}
+}
+func (f *flatList) Len() int {
+	return len(f.rlpvals)
+}
+func (f *flatList) GetRlp(i int) []byte {
+	return hexutil.MustDecode(f.rlpvals[i])
+}
+
+// TestDerivableList contains testcases found via fuzzing
+func TestDerivableList(t *testing.T) {
+	type tcase []string
+	tcs := []tcase{
+		{
+			"0xc041",
+		},
+		{
+			"0xf04cf757812428b0763112efb33b6f4fad7deb445e",
+			"0xf04cf757812428b0763112efb33b6f4fad7deb445e",
+		},
+		{
+			"0xca410605310cdc3bb8d4977ae4f0143df54a724ed873457e2272f39d66e0460e971d9d",
+			"0x6cd850eca0a7ac46bb1748d7b9cb88aa3bd21c57d852c28198ad8fa422c4595032e88a4494b4778b36b944fe47a52b8c5cd312910139dfcb4147ab8e972cc456bcb063f25dd78f54c4d34679e03142c42c662af52947d45bdb6e555751334ace76a5080ab5a0256a1d259855dfc5c0b8023b25befbb13fd3684f9f755cbd3d63544c78ee2001452dd54633a7593ade0b183891a0a4e9c7844e1254005fbe592b1b89149a502c24b6e1dca44c158aebedf01beae9c30cabe16a",
+			"0x14abd5c47c0be87b0454596baad2",
+			"0xca410605310cdc3bb8d4977ae4f0143df54a724ed873457e2272f39d66e0460e971d9d",
+		},
+	}
+	for i, tc := range tcs[1:] {
+		exp := types.DeriveSha(newFlatList(tc), newEmpty())
+		got := types.DeriveSha(newFlatList(tc), NewStackTrie(nil))
+		if !bytes.Equal(got[:], exp[:]) {
+			t.Fatalf("case %d: got %x exp %x", i, got, exp)
+		}
 	}
 }
