@@ -78,15 +78,20 @@ type (
 )
 
 var (
-	errInsertIntoHash    = errors.New("trying to insert into a hash")
-	errReadFromHash      = errors.New("trying to read from a hash")
-	errKeyNotPresent     = errors.New("trie doesn't contain key")
+	errInsertIntoHash = errors.New("trying to insert into a hash")
+	errReadFromHash   = errors.New("trying to read from a hash")
+	errKeyNotPresent  = errors.New("trie doesn't contain key")
 
 	// 0_32
 	zero32 = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 )
 
 func newBinKey(key []byte) binkey {
+	//if len(key) != 32 && len(key) != 64 {
+	//fmt.Println(len(key))
+	//panic("invalid key length")
+	//}
+
 	bits := make([]byte, 8*len(key))
 	for i := range bits {
 
@@ -151,38 +156,57 @@ func (bt *BinaryTrie) TryGet(key []byte) ([]byte, error) {
 		return nil, errKeyNotPresent
 	case *branch:
 		currentNode = bt.root.(*branch)
+		if currentNode.isLeaf() {
+			if bytes.Equal(currentNode.key, key) {
+				return currentNode.value, nil
+			}
+			return nil, errKeyNotPresent
+		}
 	case hashBinaryNode:
 		return nil, errReadFromHash
 	}
 
 	for {
-		fmt.Printf("%x\n", currentNode.prefix)
 		if !bk.samePrefix(currentNode.prefix, off) {
 			return nil, errKeyNotPresent
 		}
 
-		// XXX if it is a leaf node, then the value needs
-		// to be returned right there and then.
-
-		mustBreak := false
-		// XXX ca va creer le node s'il existe pas, et on ne
-		// veut pas de ca.
-		if bk[off+len(currentNode.prefix)] == 0 {
-			currentNode, mustBreak = bt.resolveNode(currentNode.left, bk, off, nil)
-		} else {
-			currentNode, mustBreak = bt.resolveNode(currentNode.right, bk, off, nil)
-		}
-		// XXX j'aime vraiment pas ca, le mieux serait de sortir
-		// la creation du leaf dans TryUpdate pour pas qu'on melange
-		// les deux, et du coup on se debarasse de mustBreak
-		if mustBreak {
-			if currentNode == nil {
-				return nil, errKeyNotPresent
-			}
+		// If it is a leaf node, then the value needs
+		// to be returned right then and there.
+		if off+len(currentNode.prefix) == len(bk) {
 			return currentNode.value, nil
 		}
+
+		// check which of the left or right child the loop
+		// should iterate, if available.
+		var childNode *branch
+		if bk[off+len(currentNode.prefix)] == 0 {
+			childNode = bt.resolveNode(currentNode.left, bk, off, nil)
+		} else {
+			childNode = bt.resolveNode(currentNode.right, bk, off, nil)
+		}
+
+		if childNode == nil {
+			return nil, errKeyNotPresent
+		}
+		if childNode.isLeaf() {
+			if bytes.Equal(childNode.key, key) {
+				return childNode.value, nil
+			}
+			return nil, errKeyNotPresent
+		}
+
+		// advance the offset to the length of the prefix
+		// + branch bit, and update iteration variable
 		off += len(currentNode.prefix) + 1
+		currentNode = childNode
 	}
+}
+
+func (br *branch) isLeaf() bool {
+	_, left_empty := br.left.(empty)
+	_, right_empty := br.right.(empty)
+	return left_empty && right_empty
 }
 
 // Hash calculates the hash of an expanded (i.e. not already
@@ -248,7 +272,12 @@ func (t *BinaryTrie) Update(key, value []byte) {
 	}
 }
 
+// subTreeFromKey rebuilds the subtrie rooted at path from the
+// (key, value) store.
 func (bt *BinaryTrie) subTreeFromKey(path binkey) *branch {
+	// insert all intermediate values into a temporary
+	// trie, whose root will be returned as the resolved
+	// node.
 	subtrie := NewBinaryTrie()
 	for _, keyval := range bt.store {
 		// keyval.key is a full key from the store,
@@ -264,6 +293,7 @@ func (bt *BinaryTrie) subTreeFromKey(path binkey) *branch {
 	// order otherwise. Which will lead whoever ran
 	// into this bug to this comment. Hello :)
 	rootbranch := subtrie.root.(*branch)
+
 	// Remove the part of the prefix that is redundant
 	// with the path, as it will be part of the resulting
 	// root node's prefix.
@@ -271,45 +301,28 @@ func (bt *BinaryTrie) subTreeFromKey(path binkey) *branch {
 	return rootbranch
 }
 
-func (bt *BinaryTrie) resolveNode(childNode BinaryNode, bk binkey, off int, value []byte) (*branch, bool) {
+func (bt *BinaryTrie) resolveNode(childNode BinaryNode, bk binkey, off int, value []byte) *branch {
 
 	// Check if the node has already been resolved,
 	// otherwise, resolve it.
 	switch childNode.(type) {
 	case empty:
-		if value == nil {
-			return nil, true
-		}
-
-		// This child does not exist, create it
-		return &branch{
-			prefix: bk[off:],
-			left:   hashBinaryNode(emptyRoot[:]),
-			right:  hashBinaryNode(emptyRoot[:]),
-			value:  value,
-		}, true
+		// This child does not exist
+		return nil
 	case hashBinaryNode:
 		// empty root ?
 		if bytes.Equal(childNode.(hashBinaryNode)[:], emptyRoot[:]) {
-			if value != nil {
-				return &branch{
-					prefix: bk[off:],
-					left:   hashBinaryNode(emptyRoot[:]),
-					right:  hashBinaryNode(emptyRoot[:]),
-					value:  value,
-				}, true
-			}
-			return nil, true
+			return nil
 		}
 
 		// The whole section of the store has to be
 		// hashed in order to produce the correct
 		// subtrie.
-		return bt.subTreeFromKey(bk[:off]), false
+		return bt.subTreeFromKey(bk[:off])
 	}
 
 	// Nothing to be done
-	return childNode.(*branch), false
+	return childNode.(*branch)
 }
 
 func (bt *BinaryTrie) TryUpdate(key, value []byte) error {
@@ -345,15 +358,29 @@ func (bt *BinaryTrie) TryUpdate(key, value []byte) error {
 			// The key matches the full node prefix, iterate
 			// at  the child's level.
 			var childNode *branch
-			var mustBreak bool
+
 			off += len(currentNode.prefix)
 			if bk[off] == 0 {
-				childNode, mustBreak = bt.resolveNode(currentNode.left, bk, off+1, value)
+				childNode = bt.resolveNode(currentNode.left, bk, off+1, value)
+				if childNode == nil {
+					currentNode.left = &branch{
+						prefix: bk[off:],
+						left:   hashBinaryNode(emptyRoot[:]),
+						right:  hashBinaryNode(emptyRoot[:]),
+						value:  value,
+					}
+				}
 			} else {
-				childNode, mustBreak = bt.resolveNode(currentNode.right, bk, off+1, value)
-			}
-			if mustBreak {
-				break
+				childNode = bt.resolveNode(currentNode.right, bk, off+1, value)
+				if childNode == nil {
+					currentNode.right = &branch{
+						prefix: bk[off:],
+						left:   hashBinaryNode(emptyRoot[:]),
+						right:  hashBinaryNode(emptyRoot[:]),
+						value:  value,
+					}
+				}
+
 			}
 
 			// Update the parent node's reference
