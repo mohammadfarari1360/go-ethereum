@@ -80,7 +80,6 @@ type (
 var (
 	errInsertIntoHash    = errors.New("trying to insert into a hash")
 	errReadFromHash      = errors.New("trying to read from a hash")
-	errReadFromEmptyTree = errors.New("reached an empty subtree")
 	errKeyNotPresent     = errors.New("trie doesn't contain key")
 
 	// 0_32
@@ -149,7 +148,7 @@ func (bt *BinaryTrie) TryGet(key []byte) ([]byte, error) {
 	var currentNode *branch
 	switch bt.root.(type) {
 	case empty:
-		return nil, errReadFromEmptyTree
+		return nil, errKeyNotPresent
 	case *branch:
 		currentNode = bt.root.(*branch)
 	case hashBinaryNode:
@@ -511,7 +510,7 @@ func (h hashBinaryNode) tryGet(key []byte, depth int) ([]byte, error) {
 	if depth >= 8*len(key) {
 		return []byte(h), nil
 	}
-	return nil, errReadFromEmptyTree
+	return nil, errKeyNotPresent
 }
 
 func (e empty) Hash() []byte {
@@ -523,5 +522,5 @@ func (e empty) Commit() error {
 }
 
 func (e empty) tryGet(key []byte, depth int) ([]byte, error) {
-	return nil, errReadFromEmptyTree
+	return nil, errKeyNotPresent
 }
