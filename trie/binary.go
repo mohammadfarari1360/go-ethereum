@@ -171,12 +171,6 @@ func (bt *BinaryTrie) TryGet(key []byte) ([]byte, error) {
 			return nil, errKeyNotPresent
 		}
 
-		// If it is a leaf node, then the value needs
-		// to be returned right then and there.
-		if off+len(currentNode.prefix) == len(bk) {
-			return currentNode.value, nil
-		}
-
 		// check which of the left or right child the loop
 		// should iterate, if available.
 		var childNode *branch
@@ -205,7 +199,17 @@ func (bt *BinaryTrie) TryGet(key []byte) ([]byte, error) {
 
 func (br *branch) isLeaf() bool {
 	_, left_empty := br.left.(empty)
+	if !left_empty {
+		if h, ok := br.left.(hashBinaryNode); ok {
+			left_empty = bytes.Equal(h[:], emptyRoot[:])
+		}
+	}
 	_, right_empty := br.right.(empty)
+	if !right_empty {
+		if h, ok := br.right.(hashBinaryNode); ok {
+			right_empty = bytes.Equal(h[:], emptyRoot[:])
+		}
+	}
 	return left_empty && right_empty
 }
 
