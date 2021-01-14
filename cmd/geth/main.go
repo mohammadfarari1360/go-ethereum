@@ -250,6 +250,7 @@ func init() {
 		dumpConfigCommand,
 		// See cmd/utils/flags_legacy.go
 		utils.ShowDeprecated,
+		snapshotCommand,
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
 
