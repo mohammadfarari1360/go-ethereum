@@ -18,7 +18,6 @@ package main
 
 import (
 	"bytes"
-	//"fmt"
 	"math/big"
 	"os"
 	"time"
@@ -26,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	//"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -83,20 +82,18 @@ func traverseState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	_, chaindb := utils.MakeChain(ctx, stack, true)
+	chain, chaindb := utils.MakeChain(ctx, stack, true)
 	defer chaindb.Close()
 
+	snaptree := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, chain.CurrentBlock().Root(), false, false)
 	if ctx.NArg() > 1 {
-		log.Crit("Too many arguments given")
+		utils.Fatalf("too many arguments given")
 	}
-	var root = rawdb.ReadSnapshotRoot(chaindb)
+	var root = chain.CurrentBlock().Root()
 	if ctx.NArg() == 1 {
 		root = common.HexToHash(ctx.Args()[0])
 	}
-	t, err := trie.NewSecure(root, trie.NewDatabase(chaindb))
-	if err != nil {
-		log.Crit("Failed to open trie", "root", root, "error", err)
-	}
+
 	var (
 		accounts   int
 		slots      int
@@ -104,8 +101,13 @@ func traverseState(ctx *cli.Context) error {
 		lastReport time.Time
 		start      = time.Now()
 	)
-	accIter := trie.NewIterator(t.NodeIterator(nil))
-	for accIter.Next() {
+
+	acctIt, err := snaptree.AccountIterator(root, common.Hash{})
+	if err != nil {
+		return err
+	}
+	defer acctIt.Release()
+	for acctIt.Next() {
 		accounts += 1
 		var acc struct {
 			Nonce    uint64
@@ -113,20 +115,25 @@ func traverseState(ctx *cli.Context) error {
 			Root     common.Hash
 			CodeHash []byte
 		}
-		if err := rlp.DecodeBytes(accIter.Value, &acc); err != nil {
+		account, err := snapshot.FullAccountRLP(acctIt.Account())
+		if err != nil {
+			log.Crit("Invalid account RLP", "error", err)
+		}
+		if err := rlp.DecodeBytes(account, &acc); err != nil {
 			log.Crit("Invalid account encountered during traversal", "error", err)
 		}
+
 		if acc.Root != emptyRoot {
-			storageTrie, err := trie.NewSecure(acc.Root, trie.NewDatabase(chaindb))
+			storageIt, err := snaptree.StorageIterator(root, acctIt.Hash(), common.Hash{})
 			if err != nil {
-				log.Crit("Failed to open storage trie", "root", acc.Root, "error", err)
+				return err
 			}
-			storageIter := trie.NewIterator(storageTrie.NodeIterator(nil))
-			for storageIter.Next() {
-				slots += 1
+			defer storageIt.Release()
+			for storageIt.Next() {
+				slots += 32
 			}
-			if storageIter.Err != nil {
-				log.Crit("Failed to traverse storage trie", "root", acc.Root, "error", storageIter.Err)
+			if storageIt.Error() != nil {
+				log.Crit("Failed to traverse storage trie", "root", acc.Root, "error", storageIt.Error())
 			}
 		}
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
@@ -134,16 +141,18 @@ func traverseState(ctx *cli.Context) error {
 			if len(code) == 0 {
 				log.Crit("Code is missing", "hash", common.BytesToHash(acc.CodeHash))
 			}
-			codes += 1
+			codes += len(code)
 		}
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
 	}
-	if accIter.Err != nil {
-		log.Crit("Failed to traverse state trie", "root", root, "error", accIter.Err)
+	if acctIt.Error() != nil {
+		log.Crit("Failed to traverse state trie", "root", root, "error", acctIt.Error())
 	}
+
 	log.Info("State is complete", "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
+
 	return nil
 }
