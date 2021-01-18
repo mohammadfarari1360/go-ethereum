@@ -95,11 +95,12 @@ func traverseState(ctx *cli.Context) error {
 	}
 
 	var (
-		accounts   int
-		slots      int
-		codes      int
-		lastReport time.Time
-		start      = time.Now()
+		accounts         int
+		accountsWithCode int
+		slots            int
+		codes            int
+		lastReport       time.Time
+		start            = time.Now()
 	)
 
 	acctIt, err := snaptree.AccountIterator(root, common.Hash{})
@@ -141,10 +142,11 @@ func traverseState(ctx *cli.Context) error {
 			if len(code) == 0 {
 				log.Crit("Code is missing", "hash", common.BytesToHash(acc.CodeHash))
 			}
+			accountsWithCode += 1
 			codes += len(code)
 		}
 		if time.Since(lastReport) > time.Second*8 {
-			log.Info("Traversing state", "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
+			log.Info("Traversing state", "accounts", accounts, "with code", accountsWithCode, "slots", slots, "total code size", codes, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
 	}
