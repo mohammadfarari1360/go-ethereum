@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/minio/sha256-simd"
+	"github.com/ethereum/go-ethereum/crypto/sha256"
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/sha3"
 )

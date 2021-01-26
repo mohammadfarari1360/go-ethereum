@@ -21,8 +21,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
+	sha256 "github.com/ethereum/go-ethereum/crypto/sha256"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/minio/sha256-simd"
 	"golang.org/x/crypto/sha3"
 )
 
