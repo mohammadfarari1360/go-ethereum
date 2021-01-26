@@ -54,6 +54,7 @@ type hashType int
 const (
 	typeKeccak256 hashType = iota
 	typeBlake2b
+	typeSha256
 )
 
 var blake2bEmptyRoot = common.FromHex("45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0")
@@ -216,20 +217,26 @@ func (br *branch) Hash() []byte {
 
 func (br *branch) getHasher() *hasher {
 	var hasher *hasher
-	if br.hType == typeBlake2b {
+	switch br.hType {
+	case typeBlake2b:
 		hasher = newB2Hasher(false)
-	} else {
+	case typeKeccak256:
 		hasher = newHasher(false)
+	case typeSha256:
+		hasher = newS256Hasher(false)
 	}
 	hasher.sha.Reset()
 	return hasher
 }
 
 func (br *branch) putHasher(hasher *hasher) {
-	if br.hType == typeBlake2b {
+	switch br.hType {
+	case typeBlake2b:
 		returnHasherToB2Pool(hasher)
-	} else {
+	case typeKeccak256:
 		returnHasherToPool(hasher)
+	case typeSha256:
+		returnHasherToSha256Pool(hasher)
 	}
 }
 
@@ -338,6 +345,15 @@ func NewBinaryTrieWithBlake2b() *BinaryTrie {
 	}
 }
 
+// NewBinaryTrieWithBlakeS256 creates a binary trie using Blake2b for hashing.
+func NewBinaryTrieWithBlakeS256() *BinaryTrie {
+	return &BinaryTrie{
+		root:     empty(struct{}{}),
+		store:    store(nil),
+		hashType: typeSha256,
+	}
+}
+
 // Hash returns the root hash of the binary trie, with the merkelization
 // rule described in EIP-3102.
 func (bt *BinaryTrie) Hash() []byte {
@@ -398,7 +414,7 @@ func (bt *BinaryTrie) resolveNode(childNode BinaryNode, bk binkey, off int) *bra
 		// The whole section of the store has to be
 		// hashed in order to produce the correct
 		// subtrie.
-		return bt.subTreeFromKey(bk[:off])
+		return bt.subTreeFromPath(bk[:off])
 	}
 
 	// Nothing to be done

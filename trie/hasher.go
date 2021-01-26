@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/minio/sha256-simd"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -67,6 +68,16 @@ var hasherPoolB2 = sync.Pool{
 	},
 }
 
+var hasherPoolSha256 = sync.Pool{
+	New: func() interface{} {
+		s256 := sha256.New()
+		return &hasher{
+			tmp: make(sliceBuffer, 0, 550), // cap is as large as a full fullNode.
+			sha: s256.(crypto.KeccakState),
+		}
+	},
+}
+
 func newHasher(parallel bool) *hasher {
 	h := hasherPool.Get().(*hasher)
 	h.parallel = parallel
@@ -79,11 +90,20 @@ func newB2Hasher(parallel bool) *hasher {
 	return h
 }
 
+func newS256Hasher(parallel bool) *hasher {
+	h := hasherPoolSha256.Get().(*hasher)
+	h.parallel = parallel
+	return h
+}
+
 func returnHasherToPool(h *hasher) {
 	hasherPool.Put(h)
 }
 func returnHasherToB2Pool(h *hasher) {
 	hasherPoolB2.Put(h)
+}
+func returnHasherToSha256Pool(h *hasher) {
+	hasherPoolSha256.Put(h)
 }
 
 // hash collapses a node down into a hash node, also returning a copy of the

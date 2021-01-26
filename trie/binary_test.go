@@ -24,6 +24,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/minio/sha256-simd"
+	"golang.org/x/crypto/blake2b"
+	"golang.org/x/crypto/sha3"
 )
 
 func TestBinaryKeyCreation(t *testing.T) {
@@ -245,6 +248,7 @@ func TestBinaryTrieReadOneFromManyLeaves(t *testing.T) {
 func BenchmarkTrieHash(b *testing.B) {
 	trieK := NewBinaryTrie()
 	trieB := NewBinaryTrieWithBlake2b()
+	trieS := NewBinaryTrieWithBlakeS256()
 	key := make([]byte, 32)
 	val := make([]byte, 32)
 	rand.Seed(time.Now().UnixNano())
@@ -253,6 +257,7 @@ func BenchmarkTrieHash(b *testing.B) {
 		rand.Read(val)
 		trieK.Update(key, val)
 		trieB.Update(key, val)
+		trieS.Update(key, val)
 	}
 	b.Run("m5-keccak", func(b *testing.B) {
 		b.ResetTimer()
@@ -260,6 +265,14 @@ func BenchmarkTrieHash(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			trieK.Hash()
+		}
+	})
+	b.Run("m5-sha256", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			trieS.Hash()
 		}
 	})
 	b.Run("m5-blake2b", func(b *testing.B) {
@@ -278,12 +291,74 @@ func BenchmarkTrieHash(b *testing.B) {
 			trieK.HashM4()
 		}
 	})
+	b.Run("m4-sha256", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			trieS.HashM4()
+		}
+	})
 	b.Run("m4-blake", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
 			trieB.HashM4()
+		}
+	})
+}
+
+func BenchmarkBlakeVKeccakVSha256(b *testing.B) {
+	b.Run("blake2b", func(*testing.B) {
+		rand.Seed(time.Now().UnixNano())
+		data := make([]byte, 550)
+
+		digest, _ := blake2b.New256(nil)
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for n := 0; n < b.N; n++ {
+			rand.Read(data)
+			for i := 0; i < 1000; i++ {
+				digest.Reset()
+				digest.Write(data)
+				digest.Sum(nil)
+			}
+		}
+	})
+	b.Run("keccak", func(*testing.B) {
+		rand.Seed(time.Now().UnixNano())
+		data := make([]byte, 550)
+
+		digest := sha3.NewLegacyKeccak256()
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for n := 0; n < b.N; n++ {
+			digest.Reset()
+			for i := 0; i < 1000; i++ {
+				rand.Read(data)
+				digest.Write(data)
+				digest.Sum(nil)
+			}
+		}
+	})
+	b.Run("sha256", func(*testing.B) {
+		rand.Seed(time.Now().UnixNano())
+		data := make([]byte, 550)
+
+		digest := sha256.New()
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for n := 0; n < b.N; n++ {
+			digest.Reset()
+			for i := 0; i < 1000; i++ {
+				rand.Read(data)
+				digest.Write(data)
+				digest.Sum(nil)
+			}
 		}
 	})
 }
