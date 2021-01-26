@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash"
 	"runtime"
 )
@@ -83,18 +84,25 @@ func init() {
 	isARM := runtime.GOARCH == "arm"
 	switch {
 	case is386bit || isARM:
+		fmt.Println("286 || arm")
 		blockfunc = blockfuncGeneric
 	case sha && ssse3 && sse41:
+		fmt.Println("sse")
 		blockfunc = blockfuncSha
 	case avx2:
+		fmt.Println("avx2")
 		blockfunc = blockfuncAvx2
 	case avx:
+		fmt.Println("avx")
 		blockfunc = blockfuncAvx
 	case ssse3:
+		fmt.Println("sse3")
 		blockfunc = blockfuncSsse
 	case armSha:
+		fmt.Println("armsha")
 		blockfunc = blockfuncArm
 	default:
+		fmt.Println("generic")
 		blockfunc = blockfuncGeneric
 	}
 }
