@@ -18,13 +18,109 @@ package trie
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"golang.org/x/crypto/blake2b"
+	"golang.org/x/crypto/sha3"
+	"hash"
 	"sort"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
+	sha256simd "github.com/minio/sha256-simd"
 )
+
+// // This is a copy of trie.hasher that doesn't require Read() /////////////
+
+// trieHasher is a type used for the trie Hash operation. A hasher has some
+// internal preallocated temp space
+type trieHasher struct {
+	sha      hash.Hash
+	tmp      sliceBuffer
+	parallel bool // Whether to use paralallel threads when hashing
+}
+
+// hasherPool holds pureHashers
+var hp = sync.Pool{
+	New: func() interface{} {
+		return &trieHasher{
+			tmp: make(sliceBuffer, 0, 550), // cap is as large as a full fullNode.
+			sha: sha3.NewLegacyKeccak256(),
+		}
+	},
+}
+
+var hpB2 = sync.Pool{
+	New: func() interface{} {
+		b2, err := blake2b.New256(nil)
+		if err != nil {
+			panic(err)
+		}
+		return &trieHasher{
+			tmp: make(sliceBuffer, 0, 550), // cap is as large as a full fullNode.
+			sha: b2,
+		}
+	},
+}
+
+var hpSha256 = sync.Pool{
+	New: func() interface{} {
+		return &trieHasher{
+			tmp: make(sliceBuffer, 0, 550), // cap is as large as a full fullNode.
+			sha: sha256.New(),
+		}
+	},
+}
+
+var hpSha256Simd = sync.Pool{
+	New: func() interface{} {
+		return &trieHasher{
+			tmp: make(sliceBuffer, 0, 550), // cap is as large as a full fullNode.
+			sha: sha256simd.New(),
+		}
+	},
+}
+
+func newHasher2(parallel bool) *trieHasher {
+	h := hp.Get().(*trieHasher)
+	h.parallel = parallel
+	return h
+}
+
+func newB2Hasher2(parallel bool) *trieHasher {
+	h := hpB2.Get().(*trieHasher)
+	h.parallel = parallel
+	return h
+}
+
+func newS256Hasher2(parallel bool) *trieHasher {
+	h := hpSha256.Get().(*trieHasher)
+	h.parallel = parallel
+	return h
+}
+
+func newS256SimdHasher2(parallel bool) *trieHasher {
+	h := hpSha256Simd.Get().(*trieHasher)
+	h.parallel = parallel
+	return h
+}
+
+func rthPool(h *trieHasher) {
+	hp.Put(h)
+}
+func rthB2Pool(h *trieHasher) {
+	hpB2.Put(h)
+}
+func rthSha256Pool(h *trieHasher) {
+	hpSha256.Put(h)
+}
+func rthSha256SimdPool(h *trieHasher) {
+	hpSha256Simd.Put(h)
+}
+
+// //////////////////////////////////////////////////////////////////////////
 
 // BinaryNode represents any node in a binary trie.
 type BinaryNode interface {
@@ -55,6 +151,7 @@ const (
 	typeKeccak256 hashType = iota
 	typeBlake2b
 	typeSha256
+	typeSha256Simd
 )
 
 var blake2bEmptyRoot = common.FromHex("45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0")
@@ -215,33 +312,37 @@ func (br *branch) Hash() []byte {
 	return br.hash(0)
 }
 
-func (br *branch) getHasher() *hasher {
-	var hasher *hasher
+func (br *branch) getHasher() *trieHasher {
+	var hasher *trieHasher
 	switch br.hType {
 	case typeBlake2b:
-		hasher = newB2Hasher(false)
+		hasher = newB2Hasher2(false)
 	case typeKeccak256:
-		hasher = newHasher(false)
+		hasher = newHasher2(false)
 	case typeSha256:
-		hasher = newS256Hasher(false)
+		hasher = newS256Hasher2(false)
+	case typeSha256Simd:
+		hasher = newS256SimdHasher2(false)
 	}
 	hasher.sha.Reset()
 	return hasher
 }
 
-func (br *branch) putHasher(hasher *hasher) {
+func (br *branch) putHasher(hasher *trieHasher) {
 	switch br.hType {
 	case typeBlake2b:
-		returnHasherToB2Pool(hasher)
+		rthB2Pool(hasher)
 	case typeKeccak256:
-		returnHasherToPool(hasher)
+		rthPool(hasher)
 	case typeSha256:
-		returnHasherToSha256Pool(hasher)
+		rthSha256Pool(hasher)
+	case typeSha256Simd:
+		rthSha256SimdPool(hasher)
 	}
 }
 
 func (br *branch) hash(off int) []byte {
-	var hasher *hasher
+	var hasher *trieHasher
 	var hash []byte
 	if br.value == nil {
 		// This is a branch node, so the rule is
@@ -284,7 +385,7 @@ func (br *branch) hash(off int) []byte {
 }
 
 func (br *branch) HashM4() []byte {
-	var hasher *hasher
+	var hasher *trieHasher
 	var hash []byte
 	if br.value == nil {
 		// This is a branch node, so the rule is
@@ -345,12 +446,21 @@ func NewBinaryTrieWithBlake2b() *BinaryTrie {
 	}
 }
 
-// NewBinaryTrieWithBlakeS256 creates a binary trie using Blake2b for hashing.
+// NewBinaryTrieWithBlakeS256 creates a binary trie using Sha256 for hashing.
 func NewBinaryTrieWithBlakeS256() *BinaryTrie {
 	return &BinaryTrie{
 		root:     empty(struct{}{}),
 		store:    store(nil),
 		hashType: typeSha256,
+	}
+}
+
+// NewBinaryTrieWithBlakeS256Simd creates a binary trie using Sha256-Simd
+func NewBinaryTrieWithBlakeS256Simd() *BinaryTrie {
+	return &BinaryTrie{
+		root:     empty(struct{}{}),
+		store:    store(nil),
+		hashType: typeSha256Simd,
 	}
 }
 

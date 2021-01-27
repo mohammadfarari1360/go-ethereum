@@ -249,6 +249,7 @@ func BenchmarkTrieHash(b *testing.B) {
 	trieK := NewBinaryTrie()
 	trieB := NewBinaryTrieWithBlake2b()
 	trieS := NewBinaryTrieWithBlakeS256()
+	trieSS := NewBinaryTrieWithBlakeS256Simd()
 	key := make([]byte, 32)
 	val := make([]byte, 32)
 	rand.Seed(time.Now().UnixNano())
@@ -258,6 +259,7 @@ func BenchmarkTrieHash(b *testing.B) {
 		trieK.Update(key, val)
 		trieB.Update(key, val)
 		trieS.Update(key, val)
+		trieSS.Update(key, val)
 	}
 	b.Run("m5-keccak", func(b *testing.B) {
 		b.ResetTimer()
@@ -273,6 +275,14 @@ func BenchmarkTrieHash(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			trieS.Hash()
+		}
+	})
+	b.Run("m5-sha256-simd", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			trieSS.Hash()
 		}
 	})
 	b.Run("m5-blake2b", func(b *testing.B) {
@@ -297,6 +307,14 @@ func BenchmarkTrieHash(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			trieS.HashM4()
+		}
+	})
+	b.Run("m4-sha256-simd", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			trieSS.HashM4()
 		}
 	})
 	b.Run("m4-blake", func(b *testing.B) {
