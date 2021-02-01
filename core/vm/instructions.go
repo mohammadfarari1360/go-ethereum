@@ -17,12 +17,24 @@
 package vm
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
+
+func init() {
+	f, err := os.Create("diffblockhash.csv")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	f.WriteString("start")
+}
 
 func opAdd(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
 	x, y := callContext.stack.pop(), callContext.stack.peek()
@@ -431,6 +443,13 @@ func opGasprice(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) (
 }
 
 func opBlockhash(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
+	//logchannel <- instrlog{name: "BlockHash", pc: *pc, blocknum: interpreter.evm.Context.BlockNumber.Uint64(), addr: callContext.contract.Address()}
+	f, err := os.OpenFile("diffblockhash.csv", os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	f.WriteString(fmt.Sprintf("blockhash,%d,%d,%x\n", *pc, interpreter.evm.Context.BlockNumber.Uint64(), callContext.contract.Address()))
 	num := callContext.stack.peek()
 	num64, overflow := num.Uint64WithOverflow()
 	if overflow {
@@ -470,6 +489,16 @@ func opNumber(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]
 }
 
 func opDifficulty(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
+	f, err := os.OpenFile("diffblockhash.csv", os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	fmt.Println("====== DIFFICULTY =====")
+	_, err = f.WriteString(fmt.Sprintf("difficulty,%d,%d,%x\n", *pc, interpreter.evm.Context.BlockNumber.Uint64(), callContext.contract.Address()))
+	if err != nil {
+		panic(err)
+	}
 	v, _ := uint256.FromBig(interpreter.evm.Context.Difficulty)
 	callContext.stack.push(v)
 	return nil, nil
