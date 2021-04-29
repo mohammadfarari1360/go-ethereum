@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/gballet/go-verkle"
 	lru "github.com/hashicorp/golang-lru"
 )
 
@@ -40,6 +41,9 @@ const (
 type Database interface {
 	// OpenTrie opens the main account trie.
 	OpenTrie(root common.Hash) (Trie, error)
+
+	// OpenVerkle opens the main account verkle tree
+	OpenVerkle(root common.Hash) (verkle.VerkleNode, error)
 
 	// OpenStorageTrie opens the storage trie of an account.
 	OpenStorageTrie(addrHash, root common.Hash) (Trie, error)
@@ -134,6 +138,16 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 		return nil, err
 	}
 	return tr, nil
+}
+
+// OpenVerkle opens the main account verkle tree at a specific root hash
+func (db *cachingDB) OpenVerkle(root common.Hash) (verkle.VerkleNode, error) {
+	data, err := db.db.DiskDB().Get(root[:])
+	if err != nil {
+		return nil, err
+	}
+
+	return verkle.ParseNode(data, 8)
 }
 
 // OpenStorageTrie opens the storage trie of an account.

@@ -105,7 +105,8 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	if config.IsByzantium(header.Number) {
 		statedb.Finalise(true)
 	} else {
-		root = statedb.IntermediateRoot(config.IsEIP158(header.Number)).Bytes()
+		iroot, _ := statedb.IntermediateRoot(config.IsEIP158(header.Number))
+		root = iroot.Bytes()
 	}
 	*usedGas += result.UsedGas
 

@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/gballet/go-verkle"
 )
 
 var toAddr = common.BytesToAddress
@@ -43,6 +44,7 @@ func newStateTest() *stateTest {
 func TestDump(t *testing.T) {
 	db := rawdb.NewMemoryDatabase()
 	sdb, _ := New(common.Hash{}, NewDatabaseWithConfig(db, nil), nil)
+	sdb.vroot = verkle.New(8)
 	s := &stateTest{db: db, state: sdb}
 
 	// generate a few entries

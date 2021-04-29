@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/gballet/go-verkle"
 )
 
 // Tests that updating a state trie does not leak any database writes prior to
@@ -54,7 +55,7 @@ func TestUpdateLeaks(t *testing.T) {
 		}
 	}
 
-	root := state.IntermediateRoot(false)
+	root, _ := state.IntermediateRoot(false)
 	if err := state.Database().TrieDB().Commit(root, false, nil); err != nil {
 		t.Errorf("can not commit trie %v to persistent database", root.Hex())
 	}
@@ -150,6 +151,7 @@ func TestIntermediateLeaks(t *testing.T) {
 func TestCopy(t *testing.T) {
 	// Create a random state test to copy and modify "independently"
 	orig, _ := New(common.Hash{}, NewDatabase(rawdb.NewMemoryDatabase()), nil)
+	orig.vroot = verkle.New(8)
 
 	for i := byte(0); i < 255; i++ {
 		obj := orig.GetOrNewStateObject(common.BytesToAddress([]byte{i}))

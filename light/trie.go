@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/gballet/go-verkle"
 )
 
 var (
@@ -51,6 +52,10 @@ type odrDatabase struct {
 
 func (db *odrDatabase) OpenTrie(root common.Hash) (state.Trie, error) {
 	return &odrTrie{db: db, id: db.id}, nil
+}
+
+func (db *odrDatabase) OpenVerkle(root common.Hash) (verkle.VerkleNode, error) {
+	return nil, errors.New("verkle tree not supported")
 }
 
 func (db *odrDatabase) OpenStorageTrie(addrHash, root common.Hash) (state.Trie, error) {

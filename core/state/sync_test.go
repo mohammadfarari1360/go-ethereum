@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/gballet/go-verkle"
 )
 
 // testAccount is the data associated with an account used by the state tests.
@@ -43,6 +44,7 @@ func makeTestState() (Database, common.Hash, []*testAccount) {
 	// Create an empty state
 	db := NewDatabase(rawdb.NewMemoryDatabase())
 	state, _ := New(common.Hash{}, db, nil)
+	state.vroot = verkle.New(8)
 
 	// Fill it with some arbitrary data
 	var accounts []*testAccount

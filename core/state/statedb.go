@@ -33,6 +33,8 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/gballet/go-verkle"
+	"github.com/protolambda/go-kzg/bls"
 )
 
 type revision struct {
@@ -66,6 +68,7 @@ type StateDB struct {
 	prefetcher   *triePrefetcher
 	originalRoot common.Hash // The pre-state root, before any changes were made
 	trie         Trie
+	vroot        verkle.VerkleNode
 	hasher       crypto.KeccakState
 
 	snaps         *snapshot.Tree
@@ -125,9 +128,14 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	if err != nil {
 		return nil, err
 	}
+	vt, err := db.OpenVerkle(root)
+	if err != nil {
+		return nil, err
+	}
 	sdb := &StateDB{
 		db:                  db,
 		trie:                tr,
+		vroot:               vt,
 		originalRoot:        root,
 		snaps:               snaps,
 		stateObjects:        make(map[common.Address]*stateObject),
@@ -476,6 +484,9 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 	if err = s.trie.TryUpdate(addr[:], data); err != nil {
 		s.setError(fmt.Errorf("updateStateObject (%x) error: %v", addr[:], err))
 	}
+	if err = s.vroot.Insert(addr[:], data); err != nil {
+		s.setError(fmt.Errorf("updateStateObject (%x) verkle insert error: %v", addr[:], err))
+	}
 
 	// If state snapshotting is active, cache the data til commit. Note, this
 	// update mechanism is not symmetric to the deletion, because whereas it is
@@ -672,6 +683,7 @@ func (s *StateDB) Copy() *StateDB {
 		preimages:           make(map[common.Hash][]byte, len(s.preimages)),
 		journal:             newJournal(),
 		hasher:              crypto.NewKeccakState(),
+		vroot:               s.vroot,
 	}
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
@@ -834,7 +846,10 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // IntermediateRoot computes the current root hash of the state trie.
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
-func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) (common.Hash, *bls.G1Point) {
+	if s.vroot == nil {
+		s.vroot = verkle.New(8)
+	}
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
@@ -889,7 +904,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.AccountHashes += time.Since(start) }(time.Now())
 	}
-	return s.trie.Hash()
+	return s.trie.Hash(), s.vroot.ComputeCommitment()
 }
 
 // Prepare sets the current transaction hash and index and block hash which is
