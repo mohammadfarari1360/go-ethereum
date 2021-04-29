@@ -144,6 +144,9 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 func (db *cachingDB) OpenVerkle(root common.Hash) (verkle.VerkleNode, error) {
 	data, err := db.db.DiskDB().Get(root[:])
 	if err != nil {
+		if err.Error() == "not found" {
+			return verkle.New(8), nil
+		}
 		return nil, err
 	}
 

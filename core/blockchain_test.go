@@ -185,6 +185,19 @@ func testHeaderChainImport(chain []*types.Header, blockchain *BlockChain) error 
 	return nil
 }
 
+func TestVerkle(t *testing.T) {
+	_, blockchain, err := newCanonical(ethash.NewFaker(), 0, true)
+	if err != nil {
+		t.Fatalf("failed to create pristine chain: %v", err)
+	}
+	defer blockchain.Stop()
+
+	blocks := makeBlockChain(blockchain.CurrentBlock(), 1, ethash.NewFullFaker(), blockchain.db, 0)
+	if _, err := blockchain.InsertChain(blocks); err != nil {
+		t.Fatalf("Failed to insert block: %v", err)
+	}
+}
+
 func TestLastBlock(t *testing.T) {
 	_, blockchain, err := newCanonical(ethash.NewFaker(), 0, true)
 	if err != nil {
