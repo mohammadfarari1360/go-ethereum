@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/gballet/go-verkle"
 )
 
 var emptyCodeHash = crypto.Keccak256(nil)
@@ -341,6 +342,7 @@ func (s *stateObject) updateTrie(db Database) Trie {
 	var storage map[common.Hash][]byte
 	// Insert all the pending updates into the trie
 	tr := s.getTrie(db)
+	vt := s.db.vroot
 	hasher := s.db.hasher
 
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
@@ -358,6 +360,10 @@ func (s *stateObject) updateTrie(db Database) Trie {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
 			s.setError(tr.TryUpdate(key[:], v))
+			fmt.Println("inserting ", key)
+			if err := vt.Insert(key[:], v); err != nil {
+				panic(err)
+			}
 		}
 		// If state snapshotting is active, cache the data til commit
 		if s.db.snap != nil {
@@ -387,6 +393,7 @@ func (s *stateObject) updateRoot(db Database) {
 	if s.updateTrie(db) == nil {
 		return
 	}
+	fmt.Println("prout")
 	// Track the amount of time wasted on hashing the storage trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.db.StorageHashes += time.Since(start) }(time.Now())
@@ -397,10 +404,31 @@ func (s *stateObject) updateRoot(db Database) {
 // CommitTrie the storage trie of the object to db.
 // This updates the trie root.
 func (s *stateObject) CommitTrie(db Database) error {
-	// If nothing changed, don't bother with hashing anything
-	if s.updateTrie(db) == nil {
-		return nil
+	// Skip the prefetcher for now, just take whatever time is
+	// needed to store data in the trie. Skip, the cache, too.
+	flush := make(chan verkle.FlushableNode)
+	go func() {
+		s.db.vroot.(*verkle.InternalNode).Flush(flush)
+		close(flush)
+	}()
+	fmt.Println("commiting verkle")
+	for n := range flush {
+		value, err := n.Node.Serialize()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("%x %x\n", n.Hash[:], value[:])
+		if err := s.db.Database().TrieDB().DiskDB().Put(n.Hash[:], value); err != nil {
+			return err
+		}
 	}
+
+	// If nothing changed, don't bother with hashing anything
+	//if s.updateTrie(db) == nil {
+	//return nil
+	//}
+	// Force writing, verkle needs it
+	s.updateTrie(db)
 	if s.dbErr != nil {
 		return s.dbErr
 	}
@@ -412,6 +440,11 @@ func (s *stateObject) CommitTrie(db Database) error {
 	if err == nil {
 		s.data.Root = root
 	}
+
+	// Add a pointer in order to find the verkle root from the root
+	fmt.Printf("writing %x as pointer\n", s.db.vroot.Hash())
+	s.db.db.TrieDB().DiskDB().Put(append([]byte("verkle-"), root[:]...), s.db.vroot.Hash().Bytes())
+
 	return err
 }
 

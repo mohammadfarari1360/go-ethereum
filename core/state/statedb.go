@@ -130,6 +130,7 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	}
 	vt, err := db.OpenVerkle(root)
 	if err != nil {
+		fmt.Printf("erroeur vt %x %v\n", root, err)
 		return nil, err
 	}
 	sdb := &StateDB{
@@ -942,6 +943,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 				obj.dirtyCode = false
 			}
 			// Write any storage changes in the state object to its storage trie
+			fmt.Printf("commit trie %x\n", addr)
 			if err := obj.CommitTrie(s.db); err != nil {
 				return common.Hash{}, err
 			}

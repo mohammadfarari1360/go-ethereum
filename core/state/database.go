@@ -142,6 +142,11 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenVerkle opens the main account verkle tree at a specific root hash
 func (db *cachingDB) OpenVerkle(root common.Hash) (verkle.VerkleNode, error) {
+	if root == (common.Hash{}) {
+		return verkle.New(8), nil
+	}
+	fmt.Println(root)
+	// XXX Il faut que je commence par sauvegarder le bon truc
 	data, err := db.db.DiskDB().Get(root[:])
 	if err != nil {
 		if err.Error() == "not found" {
@@ -150,6 +155,10 @@ func (db *cachingDB) OpenVerkle(root common.Hash) (verkle.VerkleNode, error) {
 		return nil, err
 	}
 
+	// XXX ben oui je suis en train de charger la root du trie,
+	// puisque je n'ai pas enregistre la root Verkle, ce qui
+	// veut dire que je cherche a decoder completement autre chose.
+	fmt.Printf("parsing data %x\n", data)
 	return verkle.ParseNode(data, 8)
 }
 

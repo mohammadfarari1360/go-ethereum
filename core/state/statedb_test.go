@@ -701,13 +701,13 @@ func TestDeleteCreateRevert(t *testing.T) {
 // the Commit operation fails with an error
 // If we are missing trie nodes, we should not continue writing to the trie
 func TestMissingTrieNodes(t *testing.T) {
-
 	// Create an initial state with a few accounts
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	var root common.Hash
 	state, _ := New(common.Hash{}, db, nil)
 	addr := toAddr([]byte("so"))
+	fmt.Println("coucou")
 	{
 		state.SetBalance(addr, big.NewInt(1))
 		state.SetCode(addr, []byte{1, 2, 3})
@@ -721,6 +721,9 @@ func TestMissingTrieNodes(t *testing.T) {
 	}
 	// Create a new state on the old root
 	state, _ = New(root, db, nil)
+	if state == nil {
+		panic("nil root")
+	}
 	// Now we clear out the memdb
 	it := memDb.NewIterator(nil, nil)
 	for it.Next() {

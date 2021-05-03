@@ -2,6 +2,8 @@ module github.com/ethereum/go-ethereum
 
 go 1.15
 
+replace "github.com/gballet/go-verkle" => /home/gballet/src/go-verkle
+
 require (
 	github.com/Azure/azure-storage-blob-go v0.7.0
 	github.com/VictoriaMetrics/fastcache v1.5.7
