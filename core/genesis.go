@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -256,10 +257,18 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 // ToBlock creates the genesis block and writes state of a genesis specification
 // to the given database (or discards it if nil).
 func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
+	return g.ToBlockWithSnaps(db, nil)
+}
+
+func (g *Genesis) ToBlockWithSnaps(db ethdb.Database, snaps *snapshot.Tree) *types.Block {
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
-	statedb, err := state.New(common.Hash{}, state.NewDatabase(db), nil)
+	var trieCfg *trie.Config
+	if g.Config != nil {
+		trieCfg = &trie.Config{UseVerkle: g.Config.UseVerkle}
+	}
+	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithConfig(db, trieCfg), snaps)
 	if err != nil {
 		panic(err)
 	}
@@ -301,6 +310,9 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	}
 	statedb.Commit(false)
 	statedb.Database().TrieDB().Commit(root, true, nil)
+	if err := statedb.Cap(root); err != nil {
+		panic(err)
+	}
 
 	return types.NewBlock(head, nil, nil, nil, trie.NewStackTrie(nil))
 }
@@ -308,7 +320,11 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 // Commit writes the block and state of a genesis specification to the database.
 // The block is committed as the canonical head block.
 func (g *Genesis) Commit(db ethdb.Database) (*types.Block, error) {
-	block := g.ToBlock(db)
+	return g.CommitWithSnaps(db, nil)
+}
+
+func (g *Genesis) CommitWithSnaps(db ethdb.Database, snaps *snapshot.Tree) (*types.Block, error) {
+	block := g.ToBlockWithSnaps(db, snaps)
 	if block.Number().Sign() != 0 {
 		return nil, errors.New("can't commit genesis block with number > 0")
 	}
