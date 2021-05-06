@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
+	"github.com/gballet/go-verkle"
+	"github.com/holiman/uint256"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -157,6 +161,26 @@ as the backend data source, making this command a lot faster.
 The argument is interpreted as block number or hash. If none is provided, the latest
 block is used.
 `,
+			},
+			{
+				Name:      "to-verkle",
+				Usage:     "use the snapshot to compute a translation of a MPT into a verkle tree",
+				ArgsUsage: "<root>",
+				Action:    utils.MigrateFlags(convertToVerkle),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.RopstenFlag,
+					utils.RinkebyFlag,
+					utils.GoerliFlag,
+				},
+				Description: `
+geth snapshot to-verkle <state-root>
+This command takes a snapshot and inserts its values in a fresh verkle tree.
+
+The argument is interpreted as the root hash. If none is provided, the latest
+block is used.
+ `,
 			},
 		},
 	}
@@ -574,5 +598,120 @@ func dumpState(ctx *cli.Context) error {
 	}
 	log.Info("Snapshot dumping complete", "accounts", accounts,
 		"elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+func convertToVerkle(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
+	headBlock := rawdb.ReadHeadBlock(chaindb)
+	if headBlock == nil {
+		log.Error("Failed to load head block")
+		return errors.New("no head block")
+	}
+	if ctx.NArg() > 1 {
+		log.Error("Too many arguments given")
+		return errors.New("too many arguments")
+	}
+	var (
+		root common.Hash
+		err  error
+	)
+	if ctx.NArg() == 1 {
+		root, err = parseRoot(ctx.Args()[0])
+		if err != nil {
+			log.Error("Failed to resolve state root", "error", err)
+			return err
+		}
+		log.Info("Start traversing the state", "root", root)
+	} else {
+		root = headBlock.Root()
+		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
+	}
+	triedb := trie.NewDatabase(chaindb)
+	t, err := trie.NewSecure(root, triedb)
+	if err != nil {
+		log.Error("Failed to open trie", "root", root, "error", err)
+		return err
+	}
+	var (
+		accounts int
+		//slots      int
+		//codes      int
+		lastReport time.Time
+		start      = time.Now()
+	)
+	vRoot := verkle.New()
+	accIter := trie.NewIterator(t.NodeIterator(nil))
+	for accIter.Next() {
+		accounts += 1
+
+		var acc types.StateAccount
+		if err := rlp.DecodeBytes(accIter.Value, &acc); err != nil {
+			log.Error("Invalid account encountered during traversal", "error", err)
+			return err
+		}
+
+		// Store the basic account data
+		var nonce, balance, version [32]byte
+		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
+		for i, b := range acc.Balance.Bytes() {
+			balance[len(acc.Balance.Bytes())-1-i] = b
+		}
+		// XXX use preimages, accIter is the hash of the address
+		// XXX optimize by not calling gettreekeyversion
+		vRoot.Insert(trieUtils.GetTreeKeyVersion(accIter.Key[:]), version[:], nil)
+		vRoot.Insert(trieUtils.GetTreeKeyBalance(accIter.Key[:]), balance[:], nil)
+		vRoot.Insert(trieUtils.GetTreeKeyNonce(accIter.Key[:]), nonce[:], nil)
+		vRoot.Insert(trieUtils.GetTreeKeyCodeKeccak(accIter.Key[:]), acc.CodeHash, nil)
+
+		// Store the account code if present
+		if !bytes.Equal(acc.CodeHash, emptyCode) {
+			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+			chunks, err := trie.ChunkifyCode(code)
+			if err != nil {
+				panic(err)
+			}
+			for i, chunk := range chunks {
+				vRoot.Insert(trieUtils.GetTreeKeyCodeChunk(accIter.Key[:], uint256.NewInt(uint64(i))), chunk[:], nil)
+			}
+			var size [32]byte
+			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
+			vRoot.Insert(trieUtils.GetTreeKeyCodeSize(accIter.Key[:]), size[:], nil)
+		} else {
+			// hack: because version is also 0, use it as the code size
+			vRoot.Insert(trieUtils.GetTreeKeyCodeSize(accIter.Key[:]), version[:], nil)
+		}
+
+		// Save every slot into the tree
+		if acc.Root != emptyRoot {
+			sRoot := verkle.New()
+			storageTrie, err := trie.NewSecure(acc.Root, triedb)
+			if err != nil {
+				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
+				return err
+			}
+			storageIter := trie.NewIterator(storageTrie.NodeIterator(nil))
+			for storageIter.Next() {
+				// XXX use preimages, accIter is the hash of the address
+				sRoot.Insert(trieUtils.GetTreeKeyStorageSlot(accIter.Key, uint256.NewInt(0).SetBytes(storageIter.Key)), storageIter.Value, nil)
+			}
+			if storageIter.Err != nil {
+				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIter.Err)
+				return storageIter.Err
+			}
+		}
+		if time.Since(lastReport) > time.Second*8 {
+			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+			lastReport = time.Now()
+		}
+	}
+	if accIter.Err != nil {
+		log.Error("Failed to compute commitment", "root", root, "error", accIter.Err)
+		return accIter.Err
+	}
+	log.Info("Conversion complete", "root commitment", vRoot.ComputeCommitment(), "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
