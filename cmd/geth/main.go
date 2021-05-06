@@ -156,6 +156,7 @@ var (
 		utils.MinerNotifyFullFlag,
 		configFileFlag,
 		utils.CatalystFlag,
+		utils.VerkleFlag,
 	}
 
 	rpcFlags = []cli.Flag{
