@@ -20,6 +20,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -74,6 +75,9 @@ type StateDB interface {
 	AddPreimage(common.Hash, []byte)
 
 	ForEachStorage(common.Address, func(common.Hash, common.Hash) bool) error
+
+	Witness() *state.AccessWitness
+	SetWitness(*state.AccessWitness)
 }
 
 // CallContext provides a basic interface for the EVM calling conventions. The EVM

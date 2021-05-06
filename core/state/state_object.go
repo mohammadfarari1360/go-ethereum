@@ -110,6 +110,7 @@ func newObject(db *StateDB, address common.Address, data types.StateAccount) *st
 	if data.Root == (common.Hash{}) {
 		data.Root = emptyRoot
 	}
+
 	return &stateObject{
 		db:             db,
 		address:        address,
@@ -220,8 +221,11 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 	}
 	// If the snapshot is unavailable or reading from it fails, load from the database.
 	if s.db.snap == nil || err != nil {
+		if s.db.GetTrie().IsVerkle() {
+			panic("verkle trees use the snapshot")
+		}
 		start := time.Now()
-		enc, err = s.getTrie(db).TryGet(key.Bytes())
+		enc, err = s.getTrie(db).TryGet(s.address[:], key.Bytes())
 		if metrics.EnabledExpensive {
 			s.db.StorageReads += time.Since(start)
 		}
@@ -238,6 +242,7 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		}
 		value.SetBytes(content)
 	}
+
 	s.originStorage[key] = value
 	return value
 }
@@ -318,7 +323,12 @@ func (s *stateObject) updateTrie(db Database) Trie {
 	// The snapshot storage map for the object
 	var storage map[common.Hash][]byte
 	// Insert all the pending updates into the trie
-	tr := s.getTrie(db)
+	var tr Trie
+	if s.db.trie.IsVerkle() {
+		tr = s.db.trie
+	} else {
+		tr = s.getTrie(db)
+	}
 	hasher := s.db.hasher
 
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
@@ -331,12 +341,17 @@ func (s *stateObject) updateTrie(db Database) Trie {
 
 		var v []byte
 		if (value == common.Hash{}) {
-			s.setError(tr.TryDelete(key[:]))
+			s.setError(tr.TryDelete(s.address[:], key[:]))
 			s.db.StorageDeleted += 1
 		} else {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			s.setError(tr.TryUpdate(key[:], v))
+			if !tr.IsVerkle() {
+				s.setError(tr.TryUpdate(s.address[:], key[:], v))
+			} else {
+				// Update the trie, with v as a value
+				s.setError(tr.TryUpdate(s.address[:], key[:], value[:]))
+			}
 			s.db.StorageUpdated += 1
 		}
 		// If state snapshotting is active, cache the data til commit

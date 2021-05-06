@@ -105,7 +105,7 @@ type odrTrie struct {
 	trie *trie.Trie
 }
 
-func (t *odrTrie) TryGet(key []byte) ([]byte, error) {
+func (t *odrTrie) TryGet(_, key []byte) ([]byte, error) {
 	key = crypto.Keccak256(key)
 	var res []byte
 	err := t.do(key, func() (err error) {
@@ -142,17 +142,17 @@ func (t *odrTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
 	})
 }
 
-func (t *odrTrie) TryUpdate(key, value []byte) error {
+func (t *odrTrie) TryUpdate(_, key, value []byte) error {
 	key = crypto.Keccak256(key)
 	return t.do(key, func() error {
 		return t.trie.TryUpdate(key, value)
 	})
 }
 
-func (t *odrTrie) TryDelete(key []byte) error {
+func (t *odrTrie) TryDelete(_, key []byte) error {
 	key = crypto.Keccak256(key)
 	return t.do(key, func() error {
-		return t.trie.TryDelete(key)
+		return t.trie.TryDelete(nil, key)
 	})
 }
 
@@ -160,7 +160,7 @@ func (t *odrTrie) TryDelete(key []byte) error {
 func (t *odrTrie) TryDeleteAccount(key []byte) error {
 	key = crypto.Keccak256(key)
 	return t.do(key, func() error {
-		return t.trie.TryDelete(key)
+		return t.trie.TryDelete(nil, key)
 	})
 }
 
@@ -189,6 +189,8 @@ func (t *odrTrie) GetKey(sha []byte) []byte {
 func (t *odrTrie) Prove(key []byte, fromLevel uint, proofDb ethdb.KeyValueWriter) error {
 	return errors.New("not implemented, needs client/server interface split")
 }
+
+func (t *odrTrie) IsVerkle() bool { return false }
 
 // do tries and retries to execute a function until it returns with no error or
 // an error type other than MissingNodeError
