@@ -82,8 +82,12 @@ func (ga *GenesisAlloc) UnmarshalJSON(data []byte) error {
 
 // flush adds allocated genesis accounts into a fresh new statedb and
 // commit the state changes into the given database handler.
-func (ga *GenesisAlloc) flush(db ethdb.Database) (common.Hash, error) {
-	statedb, err := state.New(common.Hash{}, state.NewDatabase(db), nil)
+func (ga *GenesisAlloc) flush(db ethdb.Database, cfg *params.ChainConfig) (common.Hash, error) {
+	var trieCfg *trie.Config
+	if cfg != nil {
+		trieCfg = &trie.Config{UseVerkle: cfg.IsCancun(big.NewInt(int64(0)))}
+	}
+	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithConfig(db, trieCfg), nil)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -103,7 +107,7 @@ func (ga *GenesisAlloc) flush(db ethdb.Database) (common.Hash, error) {
 	if err != nil {
 		return common.Hash{}, err
 	}
-	return root, nil
+	return root, statedb.Cap(root)
 }
 
 // write writes the json marshaled genesis state into database
@@ -151,7 +155,7 @@ func CommitGenesisState(db ethdb.Database, hash common.Hash) error {
 			return errors.New("not found")
 		}
 	}
-	_, err := alloc.flush(db)
+	_, err := alloc.flush(db, nil)
 	return err
 }
 
@@ -268,7 +272,28 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	// We have the genesis block in database(perhaps in ancient database)
 	// but the corresponding state is missing.
 	header := rawdb.ReadHeader(db, stored, 0)
-	if _, err := state.New(header.Root, state.NewDatabaseWithConfig(db, nil), nil); err != nil {
+
+	var trieCfg *trie.Config
+	if genesis == nil {
+		storedcfg := rawdb.ReadChainConfig(db, stored)
+		if storedcfg == nil {
+			panic("this should never be reached: if genesis is nil, the config is already present or 'geth init' is being called which created it (in the code above, which means genesis != nil)")
+		}
+
+		if storedcfg.CancunBlock != nil {
+			if storedcfg.CancunBlock.Cmp(big.NewInt(0)) != 0 {
+				panic("cancun block must be 0")
+			}
+
+			trieCfg = &trie.Config{UseVerkle: storedcfg.IsCancun(big.NewInt(header.Number.Int64()))}
+		}
+	} else {
+		trieCfg = &trie.Config{
+			UseVerkle: genesis.Config.IsCancun(big.NewInt(0)),
+		}
+	}
+
+	if _, err := state.New(header.Root, state.NewDatabaseWithConfig(db, trieCfg), nil); err != nil {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
@@ -353,7 +378,7 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
-	root, err := g.Alloc.flush(db)
+	root, err := g.Alloc.flush(db, g.Config)
 	if err != nil {
 		panic(err)
 	}
