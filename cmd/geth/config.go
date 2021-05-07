@@ -71,15 +71,10 @@ var tomlSettings = toml.Config{
 	},
 }
 
-type ethstatsConfig struct {
-	URL string `toml:",omitempty"`
-}
-
 type gethConfig struct {
-	Eth      ethconfig.Config
-	Node     node.Config
-	Ethstats ethstatsConfig
-	Metrics  metrics.Config
+	Eth     ethconfig.Config
+	Node    node.Config
+	Metrics metrics.Config
 }
 
 func loadConfig(file string, cfg *gethConfig) error {
@@ -130,9 +125,6 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 		utils.Fatalf("Failed to create the protocol stack: %v", err)
 	}
 	utils.SetEthConfig(ctx, stack, &cfg.Eth)
-	if ctx.GlobalIsSet(utils.EthStatsURLFlag.Name) {
-		cfg.Ethstats.URL = ctx.GlobalString(utils.EthStatsURLFlag.Name)
-	}
 	applyMetricConfig(ctx, &cfg)
 
 	return stack, cfg
@@ -159,10 +151,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	// Configure GraphQL if requested
 	if ctx.GlobalIsSet(utils.GraphQLEnabledFlag.Name) {
 		utils.RegisterGraphQLService(stack, backend, cfg.Node)
-	}
-	// Add the Ethereum Stats daemon if requested.
-	if cfg.Ethstats.URL != "" {
-		utils.RegisterEthStatsService(stack, backend, cfg.Ethstats.URL)
 	}
 	return stack, backend
 }
