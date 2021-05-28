@@ -18,6 +18,7 @@ package trie
 
 import (
 	"crypto/sha256"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -56,6 +57,10 @@ func (trie *VerkleTrie) TryGet(key []byte) ([]byte, error) {
 // by the caller while they are stored in the trie. If a node was not found in the
 // database, a trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryUpdate(key, value []byte) error {
+	fmt.Printf("inserting %x\n", key)
+	if len(key) == 0 {
+		panic("prout")
+	}
 	return trie.root.Insert(key, value)
 }
 
@@ -85,6 +90,7 @@ func (trie *VerkleTrie) Commit(onleaf LeafCallback) (common.Hash, error) {
 			panic(err)
 		}
 
+		fmt.Printf("commiting %x %x\n", n.Hash, value)
 		if err := trie.db.DiskDB().Put(n.Hash[:], value); err != nil {
 			return common.Hash{}, err
 		}
@@ -132,6 +138,9 @@ func NewVerkleStorageAdapter(trie *VerkleTrie, addr common.Hash) *VerkleStorageA
 
 func (adapter *VerkleStorageAdapter) key2Storage(key []byte) []byte {
 	h := sha256.Sum256(append(key, adapter.addr[:]...))
+	if h[0] == 0 && h[1] == 0xa2 {
+		panic("prout")
+	}
 	return h[:]
 }
 
@@ -153,13 +162,15 @@ func (adapter *VerkleStorageAdapter) TryGet(key []byte) ([]byte, error) {
 // by the caller while they are stored in the trie. If a node was not found in the
 // database, a trie.MissingNodeError is returned.
 func (adapter *VerkleStorageAdapter) TryUpdate(key, value []byte) error {
+	fmt.Printf("updating %x %x\n", key, adapter.key2Storage(key))
 	return adapter.trie.root.Insert(adapter.key2Storage(key), value)
 }
 
 // TryDelete removes any existing value for key from the trie. If a node was not
 // found in the database, a trie.MissingNodeError is returned.
 func (adapter *VerkleStorageAdapter) TryDelete(key []byte) error {
-	return adapter.trie.root.Delete(key)
+	fmt.Printf("deleting %x %x\n", key, adapter.key2Storage(key))
+	return adapter.trie.root.Delete(adapter.key2Storage(key))
 }
 
 // Hash returns the root hash of the trie. It does not write to the database and
