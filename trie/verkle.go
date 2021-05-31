@@ -176,7 +176,10 @@ func (adapter *VerkleStorageAdapter) TryDelete(key []byte) error {
 // Hash returns the root hash of the trie. It does not write to the database and
 // can be used even if the trie doesn't have one.
 func (adapter *VerkleStorageAdapter) Hash() common.Hash {
-	return adapter.trie.Hash()
+	// Return an empty hash for the moment.
+	// XXX this could be the wrong value, but at this stage I don't
+	// want to send the signal that this account has no storage.
+	return common.Hash{}
 }
 
 // Commit writes all nodes to the trie's memory database, tracking the internal
