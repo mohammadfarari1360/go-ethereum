@@ -95,15 +95,11 @@ func TestIntermediateLeaks(t *testing.T) {
 	// Write modifications to trie.
 	transState.IntermediateRoot(false)
 
-	fmt.Println("-----------------------")
-
 	// Overwrite all the data with new values in the transient database.
 	for i := byte(0); i < 2; i++ {
 		modify(transState, common.Address{i}, i, 99)
 		modify(finalState, common.Address{i}, i, 99)
 	}
-
-	fmt.Println("commit trans")
 
 	// Commit and cross check the databases.
 	transRoot, err := transState.Commit(false)
@@ -113,8 +109,6 @@ func TestIntermediateLeaks(t *testing.T) {
 	if err = transState.Database().TrieDB().Commit(transRoot, false, nil); err != nil {
 		t.Errorf("can not commit trie %v to persistent database", transRoot.Hex())
 	}
-
-	fmt.Println("commit final")
 
 	finalRoot, err := finalState.Commit(false)
 	if err != nil {
@@ -130,8 +124,6 @@ func TestIntermediateLeaks(t *testing.T) {
 		tvalue, err := transDb.Get(key)
 		if err != nil {
 			t.Errorf("entry missing from the transition database: %x -> %x", key, fvalue)
-		} else {
-			fmt.Printf("found one key %x\n", fvalue)
 		}
 		if !bytes.Equal(fvalue, tvalue) {
 			t.Errorf("the value associate key %x is mismatch,: %x in transition database ,%x in final database", key, tvalue, fvalue)
