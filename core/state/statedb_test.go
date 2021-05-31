@@ -89,14 +89,14 @@ func TestIntermediateLeaks(t *testing.T) {
 	}
 
 	// Modify the transient state.
-	for i := byte(0); i < 2; i++ {
+	for i := byte(0); i < 255; i++ {
 		modify(transState, common.Address{i}, i, 0)
 	}
 	// Write modifications to trie.
 	transState.IntermediateRoot(false)
 
 	// Overwrite all the data with new values in the transient database.
-	for i := byte(0); i < 2; i++ {
+	for i := byte(0); i < 255; i++ {
 		modify(transState, common.Address{i}, i, 99)
 		modify(finalState, common.Address{i}, i, 99)
 	}
