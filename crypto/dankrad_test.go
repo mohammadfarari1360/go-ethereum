@@ -39,14 +39,12 @@ func BenchmarkECMul(b *testing.B) {
 	})
 
 	b.Run("secp256k1", func(b *testing.B) {
-		gx, gy := curve.Gx, curve.Gy
-
 		b.ResetTimer()
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
 			for _, s := range scalarBytes {
-				gx, gy = curve.Params().ScalarMult(gx, gy, s)
+				curve.Params().ScalarBaseMult(s)
 			}
 		}
 	})
