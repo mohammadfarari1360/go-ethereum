@@ -20,16 +20,21 @@ func BenchmarkECMul(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	scalarBytes := make([][]byte, 10000)
+	for i := range scalars {
+		scalarBytes[i] = scalars[i].Bytes()
+	}
 
 	b.Run("alt_bn128", func(b *testing.B) {
 		val := new(bn256.G1)
 
 		b.ResetTimer()
+		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			//for _, s := range scalars {
-			val.ScalarMult(val, scalars[i%len(scalars)])
-			//}
+			for _, s := range scalars {
+				val.ScalarMult(val, s)
+			}
 		}
 	})
 
@@ -37,11 +42,12 @@ func BenchmarkECMul(b *testing.B) {
 		gx, gy := curve.Gx, curve.Gy
 
 		b.ResetTimer()
+		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			//for _, s := range scalars {
-			gx, gy = curve.Params().ScalarMult(gx, gy, scalars[i%len(scalars)].Bytes())
-			//}
+			for _, s := range scalarBytes {
+				gx, gy = curve.Params().ScalarMult(gx, gy, s)
+			}
 		}
 	})
 }
