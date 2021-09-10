@@ -280,16 +280,6 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 			gen(i, b)
 		}
 		if b.engine != nil {
-			// Generate an associated verkle proof
-			if tr := statedb.GetTrie(); tr.IsVerkle() {
-				vtr := tr.(*trie.VerkleTrie)
-				// Generate the proof if we are using a verkle tree
-				p, err := vtr.ProveAndSerialize(b.witness.Keys())
-				b.header.VerkleProof = p
-				if err != nil {
-					panic(err)
-				}
-			}
 			// Finalize and seal the block
 			block, err := b.engine.FinalizeAndAssemble(chainreader, b.header, statedb, b.txs, b.uncles, b.receipts)
 			if err != nil {
@@ -303,6 +293,32 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 			}
 			if err := statedb.Database().TrieDB().Commit(root, false, nil); err != nil {
 				panic(fmt.Sprintf("trie write error: %v", err))
+			}
+
+			// Generate an associated verkle proof
+			if tr := statedb.GetTrie(); tr.IsVerkle() {
+				vtr := tr.(*trie.VerkleTrie)
+				// Generate the proof if we are using a verkle tree
+				// WORKAROUND: make sure all keys are resolved
+				// before building the proof. Ultimately, node
+				// resolution can be done with a prefetcher or
+				// from GetCommitmentsAlongPath.
+				keys := b.witness.Keys()
+				for _, key := range keys {
+					out, err := vtr.TryGet(key)
+					if err != nil {
+						panic(err)
+					}
+					if len(out) == 0 {
+						panic(fmt.Sprintf("%x should be present in the tree", key))
+					}
+				}
+				vtr.Hash()
+				p, err := vtr.ProveAndSerialize(keys)
+				b.header.VerkleProof = p
+				if err != nil {
+					panic(err)
+				}
 			}
 			return block, b.receipts
 		}
