@@ -102,6 +102,9 @@ type StateDB struct {
 	// Per-transaction access list
 	accessList *accessList
 
+	// Stateless locations for this block
+	stateless map[common.Hash]common.Hash
+
 	// Journal of state modifications. This is the backbone of
 	// Snapshot and RevertToSnapshot.
 	journal        *journal
@@ -416,6 +419,12 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) {
 	}
 }
 
+// SetStateless sets the vales recovered from the execution of a stateless
+// block.
+func (s *StateDB) SetStateless(leaves map[common.Hash]common.Hash) {
+	s.stateless = leaves
+}
+
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) {
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
@@ -575,6 +584,32 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 			if data.Root == (common.Hash{}) {
 				data.Root = emptyRoot
 			}
+		} else if s.stateless != nil {
+			// Check that it is present in the witness, if running
+			// in stateless execution mode.
+			chunk := trieUtils.GetTreeKeyNonce(addr)
+			nb, ok := s.stateless[common.BytesToHash(chunk)]
+			if !ok {
+				log.Error("Failed to decode state object", "addr", addr, "err", err)
+				return nil
+			}
+			chunk = trieUtils.GetTreeKeyBalance(addr)
+			bb, ok := s.stateless[common.BytesToHash(chunk)]
+			if !ok {
+				log.Error("Failed to decode state object", "addr", addr, "err", err)
+				return nil
+			}
+			chunk = trieUtils.GetTreeKeyCodeKeccak(addr)
+			cb, ok := s.stateless[common.BytesToHash(chunk)]
+			if !ok {
+				log.Error("Failed to decode state object", "addr", addr, "err", err)
+				return nil
+			}
+			data = &Account{
+				Nonce:    binary.BigEndian.Uint64(nb[:8]),
+				Balance:  big.NewInt(0).SetBytes(bb[:]),
+				CodeHash: cb[:],
+			}
 		}
 	}
 	// If snapshot unavailable or reading from it failed, load from the database
@@ -702,6 +737,7 @@ func (s *StateDB) Copy() *StateDB {
 		preimages:           make(map[common.Hash][]byte, len(s.preimages)),
 		journal:             newJournal(),
 		hasher:              crypto.NewKeccakState(),
+		stateless:           make(map[common.Hash]common.Hash, len(s.stateless)),
 	}
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
@@ -751,6 +787,10 @@ func (s *StateDB) Copy() *StateDB {
 	// However, it doesn't cost us much to copy an empty list, so we do it anyway
 	// to not blow up if we ever decide copy it in the middle of a transaction
 	state.accessList = s.accessList.Copy()
+
+	for addr, value := range s.stateless {
+		state.stateless[addr] = value
+	}
 
 	// If there's a prefetcher running, make an inactive copy of it that can
 	// only access data but does not actively preload (since the user will not
