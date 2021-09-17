@@ -333,6 +333,7 @@ func TestProcessStateless(t *testing.T) {
 		gen.AddTx(tx)
 
 	})
+
 	_, err := blockchain.InsertChain(chain)
 	if err != nil {
 		t.Fatalf("block imported with error: %v", err)
