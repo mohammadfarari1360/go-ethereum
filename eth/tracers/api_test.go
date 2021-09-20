@@ -68,12 +68,12 @@ func newTestBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i i
 	gspec.Config = backend.chainConfig
 	var (
 		gendb   = rawdb.NewMemoryDatabase()
-		genesis = gspec.MustCommit(gendb, nil)
+		genesis = gspec.MustCommit(gendb)
 	)
 	blocks, _ := core.GenerateChain(backend.chainConfig, genesis, backend.engine, gendb, n, generator)
 
 	// Import the canonical chain
-	gspec.MustCommit(backend.chaindb, nil)
+	gspec.MustCommit(backend.chaindb)
 	cacheConfig := &core.CacheConfig{
 		TrieCleanLimit:    256,
 		TrieDirtyLimit:    256,
