@@ -296,6 +296,13 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 			toBalance := trieUtils.GetTreeKeyBalance(*msg.To())
 			pre := st.state.GetBalance(*msg.To())
 			gas += st.evm.TxContext.Accesses.TouchAddressAndChargeGas(toBalance, pre.Bytes())
+
+			// NOTE: Nonce also needs to be charged, because it is needed for execution
+			// on the statless side.
+			var preTN [8]byte
+			fromNonce := trieUtils.GetTreeKeyNonce(*msg.To())
+			binary.BigEndian.PutUint64(preTN[:], st.state.GetNonce(*msg.To()))
+			gas += st.evm.TxContext.Accesses.TouchAddressAndChargeGas(fromNonce, preTN[:])
 		}
 		fromBalance := trieUtils.GetTreeKeyBalance(msg.From())
 		preFB := st.state.GetBalance(msg.From()).Bytes()
