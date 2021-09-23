@@ -48,7 +48,7 @@ func GetTreeKey(address common.Address, treeIndex *uint256.Int, subIndex byte) [
 	copy(payload[:len(treeIndexBytes)], treeIndexBytes)
 	digest.Write(payload[:])
 	h := digest.Sum(nil)
-	h[31] = byte(subIndex)
+	h[31] = subIndex
 	return h
 }
 
