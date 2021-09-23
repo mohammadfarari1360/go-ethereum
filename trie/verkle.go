@@ -216,6 +216,12 @@ func DeserializeVerkleProof(proof []byte) (*bls.G1Point, *bls.Fr, *bls.G1Point, 
 	return vp.D, vp.Y, vp.Σ, leaves, nil
 }
 
+// Copy the values here so as to avoid an import cycle
+const (
+	PUSH1  = 0x60
+	PUSH32 = 0x71
+)
+
 func ChunkifyCode(addr common.Address, code []byte) ([][32]byte, error) {
 	lastOffset := byte(0)
 	chunkCount := len(code) / 31
@@ -230,8 +236,8 @@ func ChunkifyCode(addr common.Address, code []byte) ([][32]byte, error) {
 		}
 		copy(chunk[1:], code[31*i:end])
 		for j := lastOffset; int(j) < len(code[31*i:end]); j++ {
-			if code[j] >= byte(vm.PUSH1) && code[j] <= byte(vm.PUSH32) {
-				j += code[j] - byte(vm.PUSH1) + 1
+			if code[j] >= byte(PUSH1) && code[j] <= byte(PUSH32) {
+				j += code[j] - byte(PUSH1) + 1
 				lastOffset = (j + 1) % 31
 			}
 		}
