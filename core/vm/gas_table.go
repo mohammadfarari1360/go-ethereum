@@ -94,7 +94,9 @@ func gasExtCodeSize(evm *EVM, contract *Contract, stack *Stack, mem *Memory, mem
 	index := trieUtils.GetTreeKeyCodeSize(common.Address(slot.Bytes20()))
 	// FIXME(@gballet) need to get the exact code size when executing the operation,
 	// the value passed here is invalid.
-	usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, slot.Bytes())
+	if evm.accesses != nil {
+		usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, slot.Bytes())
+	}
 
 	return usedGas, nil
 }
@@ -177,8 +179,11 @@ func gasSLoad(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySiz
 	where := stack.Back(0)
 	addr := contract.Address()
 	index := trieUtils.GetTreeKeyStorageSlot(addr, where)
-	// FIXME(@gballet) invalid value, got to read it from the DB
-	usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, index)
+
+	// FIXME(@gballet) invalid value, got to read it from the DB.
+	if evm.accesses != nil {
+		usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, index)
+	}
 
 	return usedGas, nil
 }

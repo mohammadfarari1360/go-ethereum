@@ -661,6 +661,14 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 				data.Root = emptyRoot
 			}
 		}
+
+		// TODO(@gballet) Touch the corresponding state pages
+		// s.accesses.TouchAddress(trieUtils.GetTreeKeyVersion, 0)
+		// s.accesses.TouchAddress(trieUtils.GetTreeKeyBalance, acc.Balance.Bytes())
+		// s.accesses.TouchAddress(trieUtils.GetTreeKeyNonce, acc.Nonce)
+		// if data.CodeHash != emptyCodeHash {
+		// s.accesses.TouchAddress(trieUtils.GetTreeKeyKeccak, data.CodeHash)
+		// }
 	}
 	// If snapshot unavailable or reading from it failed, load from the database
 	if s.snap == nil || err != nil {
