@@ -17,6 +17,7 @@
 package trie
 
 import (
+	"errors"
 	"fmt"
 	"encoding/binary"
 
@@ -47,6 +48,8 @@ func NewVerkleTrie(root verkle.VerkleNode, db *Database) *VerkleTrie {
 		db:   db,
 	}
 }
+
+var errInvalidProof = errors.New("invalid proof")
 
 // GetKey returns the sha3 preimage of a hashed key that was previously used
 // to store a value.
@@ -182,15 +185,22 @@ type verkleproof struct {
 	Y *bls.Fr
 	Σ *bls.G1Point
 
+	Cis     []*bls.G1Point
+	Indices []uint
+	Yis     []*bls.Fr
+
 	Leaves []KeyValuePair
 }
 
 func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[common.Hash][]byte) ([]byte, error) {
-	d, y, σ := verkle.MakeVerkleMultiProof(trie.root, keys)
+	d, y, σ, cis, indices, yis := verkle.MakeVerkleMultiProof(trie.root, keys)
 	vp := verkleproof{
-		D: d,
-		Y: y,
-		Σ: σ,
+		D:       d,
+		Y:       y,
+		Σ:       σ,
+		Cis:     cis,
+		Indices: indices,
+		Yis:     yis,
 	}
 	for key, val := range kv {
 		var k [32]byte
@@ -203,17 +213,29 @@ func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[common.Hash][]by
 	return rlp.EncodeToBytes(vp)
 }
 
-func DeserializeVerkleProof(proof []byte) (*bls.G1Point, *bls.Fr, *bls.G1Point, map[common.Hash]common.Hash, error) {
+func DeserializeAndVerifyVerkleProof(proof []byte) (*bls.G1Point, *bls.Fr, *bls.G1Point, map[common.Hash]common.Hash, error) {
+	d, y, σ, cis, indices, yis, leaves, err := deserializeVerkleProof(proof)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("could not deserialize proof: %w", err)
+	}
+	if !verkle.VerifyVerkleProof(d, σ, y, cis, indices, yis, verkle.GetKZGConfig()) {
+		return nil, nil, nil, nil, errInvalidProof
+	}
+
+	return d, y, σ, leaves, nil
+}
+
+func deserializeVerkleProof(proof []byte) (*bls.G1Point, *bls.Fr, *bls.G1Point, []*bls.G1Point, []uint, []*bls.Fr, map[common.Hash]common.Hash, error) {
 	var vp verkleproof
 	err := rlp.DecodeBytes(proof, &vp)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("verkle proof deserialization error: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("verkle proof deserialization error: %w", err)
 	}
 	leaves := make(map[common.Hash]common.Hash, len(vp.Leaves))
 	for _, kvp := range vp.Leaves {
 		leaves[common.BytesToHash(kvp.Key)] = common.BytesToHash(kvp.Value)
 	}
-	return vp.D, vp.Y, vp.Σ, leaves, nil
+	return vp.D, vp.Y, vp.Σ, vp.Cis, vp.Indices, vp.Yis, leaves, nil
 }
 
 // Copy the values here so as to avoid an import cycle
