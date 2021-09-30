@@ -19,7 +19,6 @@ package utils
 import (
 	"crypto/sha256"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
 )
 
@@ -40,9 +39,9 @@ var (
 	codeStorageDelta    = uint256.NewInt(0).Sub(HeaderStorageOffset, CodeOffset)
 )
 
-func GetTreeKey(address common.Address, treeIndex *uint256.Int, subIndex byte) []byte {
+func GetTreeKey(address []byte, treeIndex *uint256.Int, subIndex byte) []byte {
 	digest := sha256.New()
-	digest.Write(address[:])
+	digest.Write(address)
 	treeIndexBytes := treeIndex.Bytes()
 	var payload [32]byte
 	copy(payload[:len(treeIndexBytes)], treeIndexBytes)
@@ -52,31 +51,31 @@ func GetTreeKey(address common.Address, treeIndex *uint256.Int, subIndex byte) [
 	return h
 }
 
-func GetTreeKeyAccountLeaf(address common.Address, leaf byte) []byte {
+func GetTreeKeyAccountLeaf(address []byte, leaf byte) []byte {
 	return GetTreeKey(address, zero, leaf)
 }
 
-func GetTreeKeyVersion(address common.Address) []byte {
+func GetTreeKeyVersion(address []byte) []byte {
 	return GetTreeKey(address, zero, VersionLeafKey)
 }
 
-func GetTreeKeyBalance(address common.Address) []byte {
+func GetTreeKeyBalance(address []byte) []byte {
 	return GetTreeKey(address, zero, BalanceLeafKey)
 }
 
-func GetTreeKeyNonce(address common.Address) []byte {
+func GetTreeKeyNonce(address []byte) []byte {
 	return GetTreeKey(address, zero, NonceLeafKey)
 }
 
-func GetTreeKeyCodeKeccak(address common.Address) []byte {
+func GetTreeKeyCodeKeccak(address []byte) []byte {
 	return GetTreeKey(address, zero, CodeKeccakLeafKey)
 }
 
-func GetTreeKeyCodeSize(address common.Address) []byte {
+func GetTreeKeyCodeSize(address []byte) []byte {
 	return GetTreeKey(address, zero, CodeSizeLeafKey)
 }
 
-func GetTreeKeyCodeChunk(address common.Address, chunk *uint256.Int) []byte {
+func GetTreeKeyCodeChunk(address []byte, chunk *uint256.Int) []byte {
 	chunkOffset := new(uint256.Int).Add(CodeOffset, chunk)
 	treeIndex := new(uint256.Int).Div(chunkOffset, VerkleNodeWidth)
 	subIndexMod := new(uint256.Int).Mod(chunkOffset, VerkleNodeWidth).Bytes()
@@ -87,7 +86,7 @@ func GetTreeKeyCodeChunk(address common.Address, chunk *uint256.Int) []byte {
 	return GetTreeKey(address, treeIndex, subIndex)
 }
 
-func GetTreeKeyStorageSlot(address common.Address, storageKey *uint256.Int) []byte {
+func GetTreeKeyStorageSlot(address []byte, storageKey *uint256.Int) []byte {
 	treeIndex := storageKey.Clone()
 	if storageKey.Cmp(codeStorageDelta) < 0 {
 		treeIndex.Add(HeaderStorageOffset, storageKey)

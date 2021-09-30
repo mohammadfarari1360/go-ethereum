@@ -17,13 +17,12 @@
 package trie
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"encoding/binary"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/utils"
@@ -78,15 +77,8 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	if err = t.TryUpdate(utils.GetTreeKeyBalance(key), acc.Balance.Bytes()); err != nil {
 		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
 	}
-	if err = t.TryUpdate(utils.GetTreeKeyCodeKeccak(key), acc.CodeHash()); err != nil {
+	if err = t.TryUpdate(utils.GetTreeKeyCodeKeccak(key), acc.CodeHash); err != nil {
 		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if len(acc.Code) > 0 {
-		cs := make([]byte, 32)
-		binary.BigEndian.PutUint64(cs, uint64(len(obj.code)))
-		if err = t.TryUpdate(utils.GetTreeKeyCodeSize(key), cs); err != nil {
-			return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-		}
 	}
 
 	return nil

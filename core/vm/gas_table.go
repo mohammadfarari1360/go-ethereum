@@ -91,7 +91,7 @@ func memoryCopierGas(stackpos int) gasFunc {
 func gasExtCodeSize(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
 	usedGas := uint64(0)
 	slot := stack.Back(0)
-	index := trieUtils.GetTreeKeyCodeSize(common.Address(slot.Bytes20()))
+	index := trieUtils.GetTreeKeyCodeSize(slot.Bytes())
 	// FIXME(@gballet) need to get the exact code size when executing the operation,
 	// the value passed here is invalid.
 	if evm.accesses != nil {
@@ -131,7 +131,7 @@ func gasCodeCopy(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memory
 		for ; chunk < endChunk; chunk++ {
 
 			// TODO make a version of GetTreeKeyCodeChunk without the bigint
-			index := trieUtils.GetTreeKeyCodeChunk(addr, uint256.NewInt(chunk))
+			index := trieUtils.GetTreeKeyCodeChunk(addr[:], uint256.NewInt(chunk))
 			// FIXME(@gballet) invalid code chunk, the jumpdest is missing
 			statelessGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, code[chunk*31:chunk*31+31])
 		}
@@ -165,7 +165,7 @@ func gasExtCodeCopy(evm *EVM, contract *Contract, stack *Stack, mem *Memory, mem
 		// XXX uint64 overflow in condition check
 		for ; chunk < endChunk; chunk++ {
 			// TODO(@gballet) make a version of GetTreeKeyCodeChunk without the bigint
-			index := trieUtils.GetTreeKeyCodeChunk(addr, uint256.NewInt(chunk))
+			index := trieUtils.GetTreeKeyCodeChunk(addr[:], uint256.NewInt(chunk))
 			statelessGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, code[31*chunk:31*(chunk+1)])
 		}
 
@@ -180,7 +180,7 @@ func gasSLoad(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySiz
 	if evm.accesses != nil {
 		where := stack.Back(0)
 		addr := contract.Address()
-		index := trieUtils.GetTreeKeyStorageSlot(addr, where)
+		index := trieUtils.GetTreeKeyStorageSlot(addr[:], where)
 		// FIXME(@gballet) invalid value, got to read it from the DB.
 		usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, index)
 	}
@@ -432,7 +432,7 @@ func gasCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize
 	if evm.accesses != nil {
 		// Charge witness costs
 		for i := trieUtils.VersionLeafKey; i <= trieUtils.CodeSizeLeafKey; i++ {
-			index := trieUtils.GetTreeKeyAccountLeaf(address, byte(i))
+			index := trieUtils.GetTreeKeyAccountLeaf(address[:], byte(i))
 			// FIXME(@gballet) invalid loaded value - need to introduce a
 			// TouchAccount function.
 			gas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, index)

@@ -388,7 +388,7 @@ func copyCodeFromAccesses(addr common.Address, codeOffset, codeEnd, memOffset ui
 			end = codeEnd % 31
 		}
 		// TODO make a version of GetTreeKeyCodeChunk without the bigint
-		index := common.BytesToHash(trieUtils.GetTreeKeyCodeChunk(addr, uint256.NewInt(chunk)))
+		index := common.BytesToHash(trieUtils.GetTreeKeyCodeChunk(addr[:], uint256.NewInt(chunk)))
 		h := in.evm.accesses[index]
 		scope.Memory.Set(memOffset+offset, end-start, h[1+start:1+end])
 		offset += end - start

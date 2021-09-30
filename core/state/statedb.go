@@ -482,13 +482,13 @@ func (s *StateDB) updateStatelessStateObject(obj *stateObject) {
 		ch common.Hash
 	)
 
-	versionKey := common.BytesToHash(trieUtils.GetTreeKeyVersion(addr))
+	versionKey := common.BytesToHash(trieUtils.GetTreeKeyVersion(addr[:]))
 	if v, ok = s.stateless[versionKey]; ok {
-		nonceKey := common.BytesToHash(trieUtils.GetTreeKeyNonce(addr))
+		nonceKey := common.BytesToHash(trieUtils.GetTreeKeyNonce(addr[:]))
 		if n, ok = s.stateless[nonceKey]; ok {
-			balanceKey := common.BytesToHash(trieUtils.GetTreeKeyBalance(addr))
+			balanceKey := common.BytesToHash(trieUtils.GetTreeKeyBalance(addr[:]))
 			if b, ok = s.stateless[balanceKey]; ok {
-				codeHashKey := common.BytesToHash(trieUtils.GetTreeKeyCodeKeccak(addr))
+				codeHashKey := common.BytesToHash(trieUtils.GetTreeKeyCodeKeccak(addr[:]))
 				if _, ok = s.stateless[codeHashKey]; ok {
 					v[0] = byte(0)
 					binary.BigEndian.PutUint64(n[:], obj.data.Nonce)
@@ -526,7 +526,14 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 	}
 
 	if err := s.trie.TryUpdateAccount(addr[:], &obj.data); err != nil {
-		s.setError(fmt.Errorf("updateStateObject (%x) error: %v", addr[:], err))
+		s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
+	}
+	if len(obj.code) > 0 && s.trie.IsVerkle() {
+		cs := make([]byte, 32)
+		binary.BigEndian.PutUint64(cs, uint64(len(obj.code)))
+		if err := s.trie.TryUpdate(trieUtils.GetTreeKeyCodeSize(addr[:]), cs); err != nil {
+			s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
+		}
 	}
 
 	// If state snapshotting is active, cache the data til commit. Note, this
@@ -562,7 +569,7 @@ func (s *StateDB) deleteStateObject(obj *stateObject) {
 		}
 	} else {
 		for i := byte(0); i <= 255; i++ {
-			if err := s.trie.TryDelete(trieUtils.GetTreeKeyAccountLeaf(obj.Address(), i)); err != nil {
+			if err := s.trie.TryDelete(trieUtils.GetTreeKeyAccountLeaf(obj.Address().Bytes(), i)); err != nil {
 				s.setError(fmt.Errorf("deleteStateObject (%x) error: %v", obj.Address(), err))
 			}
 		}
@@ -582,7 +589,7 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 func (s *StateDB) getStatelessDeletedStateObject(addr common.Address) *stateObject {
 	// Check that it is present in the witness, if running
 	// in stateless execution mode.
-	chunk := trieUtils.GetTreeKeyNonce(addr)
+	chunk := trieUtils.GetTreeKeyNonce(addr[:])
 	nb, ok := s.stateless[common.BytesToHash(chunk)]
 	if !ok {
 		log.Error("Failed to decode state object", "addr", addr)
@@ -591,7 +598,7 @@ func (s *StateDB) getStatelessDeletedStateObject(addr common.Address) *stateObje
 		panic("inivalid chunk")
 		return nil
 	}
-	chunk = trieUtils.GetTreeKeyBalance(addr)
+	chunk = trieUtils.GetTreeKeyBalance(addr[:])
 	bb, ok := s.stateless[common.BytesToHash(chunk)]
 	if !ok {
 		log.Error("Failed to decode state object", "addr", addr)
@@ -600,7 +607,7 @@ func (s *StateDB) getStatelessDeletedStateObject(addr common.Address) *stateObje
 		panic("inivalid chunk")
 		return nil
 	}
-	chunk = trieUtils.GetTreeKeyCodeKeccak(addr)
+	chunk = trieUtils.GetTreeKeyCodeKeccak(addr[:])
 	cb, ok := s.stateless[common.BytesToHash(chunk)]
 	if !ok {
 		// Assume that this is an externally-owned account, and that
@@ -610,7 +617,7 @@ func (s *StateDB) getStatelessDeletedStateObject(addr common.Address) *stateObje
 		// account code.
 		copy(cb[:], emptyCodeHash)
 	}
-	data := &Account{
+	data := &types.StateAccount{
 		Nonce:    binary.BigEndian.Uint64(nb[:8]),
 		Balance:  big.NewInt(0).SetBytes(bb[:]),
 		CodeHash: cb[:],
@@ -1082,7 +1089,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 				if s.trie.IsVerkle() {
 					if chunks, err := trie.ChunkifyCode(addr, obj.code); err == nil {
 						for i, chunk := range chunks {
-							s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunk(addr, uint256.NewInt(uint64(i))), chunk[:])
+							s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunk(addr[:], uint256.NewInt(uint64(i))), chunk[:])
 						}
 					} else {
 						s.setError(err)

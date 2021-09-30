@@ -357,7 +357,7 @@ func (s *stateObject) updateTrie(db Database) Trie {
 		var v []byte
 		if (value == common.Hash{}) {
 			if tr.IsVerkle() {
-				k := trieUtils.GetTreeKeyStorageSlot(s.address, new(uint256.Int).SetBytes(key[:]))
+				k := trieUtils.GetTreeKeyStorageSlot(s.address[:], new(uint256.Int).SetBytes(key[:]))
 				s.setError(tr.TryDelete(k))
 				//s.db.db.TrieDB().DiskDB().Delete(append(s.address[:], key[:]...))
 			} else {
@@ -371,7 +371,7 @@ func (s *stateObject) updateTrie(db Database) Trie {
 			if !tr.IsVerkle() {
 				s.setError(tr.TryUpdate(key[:], v))
 			} else {
-				k := trieUtils.GetTreeKeyStorageSlot(s.address, new(uint256.Int).SetBytes(key[:]))
+				k := trieUtils.GetTreeKeyStorageSlot(s.address[:], new(uint256.Int).SetBytes(key[:]))
 				// Update the trie, with v as a value
 				s.setError(tr.TryUpdate(k, v))
 			}
