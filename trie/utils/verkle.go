@@ -88,13 +88,14 @@ func GetTreeKeyCodeChunk(address common.Address, chunk *uint256.Int) []byte {
 }
 
 func GetTreeKeyStorageSlot(address common.Address, storageKey *uint256.Int) []byte {
+	treeIndex := storageKey.Clone()
 	if storageKey.Cmp(codeStorageDelta) < 0 {
-		storageKey.Add(HeaderStorageOffset, storageKey)
+		treeIndex.Add(HeaderStorageOffset, storageKey)
 	} else {
-		storageKey.Add(MainStorageOffset, storageKey)
+		treeIndex.Add(MainStorageOffset, storageKey)
 	}
-	treeIndex := new(uint256.Int).Div(storageKey, VerkleNodeWidth)
-	subIndexMod := new(uint256.Int).Mod(storageKey, VerkleNodeWidth).Bytes()
+	treeIndex.Div(treeIndex, VerkleNodeWidth)
+	subIndexMod := new(uint256.Int).Mod(treeIndex, VerkleNodeWidth).Bytes()
 	var subIndex byte
 	if len(subIndexMod) != 0 {
 		subIndex = subIndexMod[0]
