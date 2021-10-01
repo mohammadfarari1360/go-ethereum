@@ -142,8 +142,7 @@ func (trie *VerkleTrie) Commit(onleaf LeafCallback) (common.Hash, int, error) {
 // NodeIterator returns an iterator that returns nodes of the trie. Iteration
 // starts at the key after the given start key.
 func (trie *VerkleTrie) NodeIterator(startKey []byte) NodeIterator {
-	it := &verkleNodeIterator{trie: trie}
-	return it
+	return newVerkleNodeIterator(trie, nil)
 }
 
 // Prove constructs a Merkle proof for key. The result contains all encoded nodes
