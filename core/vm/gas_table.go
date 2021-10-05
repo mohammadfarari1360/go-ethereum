@@ -181,8 +181,7 @@ func gasSLoad(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySiz
 		where := stack.Back(0)
 		addr := contract.Address()
 		index := trieUtils.GetTreeKeyStorageSlot(addr[:], where)
-		// FIXME(@gballet) invalid value, got to read it from the DB.
-		usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, index)
+		usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
 	}
 
 	return usedGas, nil

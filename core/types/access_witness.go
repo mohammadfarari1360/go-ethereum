@@ -30,12 +30,18 @@ type AccessWitness struct {
 
 	// Chunks contains the initial value of each address
 	Chunks map[common.Hash][]byte
+
+	// The initial value isn't always available at the time an
+	// address is touched, this map references addresses that
+	// were touched but can not yet be put in Chunks.
+	Undefined map[common.Hash]struct{}
 }
 
 func NewAccessWitness() *AccessWitness {
 	return &AccessWitness{
-		Branches: make(map[[31]byte]struct{}),
-		Chunks:   make(map[common.Hash][]byte),
+		Branches:  make(map[[31]byte]struct{}),
+		Chunks:    make(map[common.Hash][]byte),
+		Undefined: make(map[common.Hash]struct{}),
 	}
 }
 
@@ -56,7 +62,14 @@ func (aw *AccessWitness) TouchAddress(addr, value []byte) (bool, bool) {
 
 	// Check for the presence of the selector
 	if _, newSelector := aw.Chunks[common.BytesToHash(addr)]; !newSelector {
-		aw.Chunks[common.BytesToHash(addr)] = value
+		if value == nil {
+			aw.Undefined[common.BytesToHash(addr)] = struct{}{}
+		} else {
+			if _, ok := aw.Undefined[common.BytesToHash(addr)]; !ok {
+				delete(aw.Undefined, common.BytesToHash(addr))
+			}
+			aw.Chunks[common.BytesToHash(addr)] = value
+		}
 	}
 
 	return newStem, newSelector

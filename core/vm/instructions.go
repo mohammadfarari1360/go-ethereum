@@ -545,6 +545,10 @@ func opSload(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 	hash := common.Hash(loc.Bytes32())
 	val := interpreter.evm.StateDB.GetState(scope.Contract.Address(), hash)
 	loc.SetBytes(val.Bytes())
+	// Get the initial value as it might not be present
+
+	index := trieUtils.GetTreeKeyStorageSlot(scope.Contract.Address().Bytes(), loc)
+	interpreter.evm.TxContext.Accesses.TouchAddress(index, val.Bytes())
 	return nil, nil
 }
 
