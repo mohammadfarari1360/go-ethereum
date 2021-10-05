@@ -342,7 +342,12 @@ func opReturnDataCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeConte
 
 func opExtCodeSize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	slot := scope.Stack.peek()
-	slot.SetUint64(uint64(interpreter.evm.StateDB.GetCodeSize(slot.Bytes20())))
+	cs := uint64(interpreter.evm.StateDB.GetCodeSize(slot.Bytes20()))
+	if interpreter.evm.accesses != nil {
+		index := trieUtils.GetTreeKeyCodeSize(slot.Bytes())
+		interpreter.evm.TxContext.Accesses.TouchAddress(index, uint256.NewInt(cs).Bytes())
+	}
+	slot.SetUint64(cs)
 	return nil, nil
 }
 

@@ -91,11 +91,9 @@ func memoryCopierGas(stackpos int) gasFunc {
 func gasExtCodeSize(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
 	usedGas := uint64(0)
 	slot := stack.Back(0)
-	index := trieUtils.GetTreeKeyCodeSize(slot.Bytes())
-	// FIXME(@gballet) need to get the exact code size when executing the operation,
-	// the value passed here is invalid.
 	if evm.accesses != nil {
-		usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, slot.Bytes())
+		index := trieUtils.GetTreeKeyCodeSize(slot.Bytes())
+		usedGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
 	}
 
 	return usedGas, nil
