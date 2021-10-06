@@ -430,9 +430,7 @@ func gasCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize
 		// Charge witness costs
 		for i := trieUtils.VersionLeafKey; i <= trieUtils.CodeSizeLeafKey; i++ {
 			index := trieUtils.GetTreeKeyAccountLeaf(address[:], byte(i))
-			// FIXME(@gballet) invalid loaded value - need to introduce a
-			// TouchAccount function.
-			gas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, index)
+			gas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
 		}
 	}
 
