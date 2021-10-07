@@ -124,14 +124,12 @@ func gasCodeCopy(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memory
 		addr := contract.Address()
 		chunk := uint64CodeOffset / 31
 		endChunk := uint64CodeEnd / 31
-		code := evm.StateDB.GetCode(addr)
 		// XXX uint64 overflow in condition check
 		for ; chunk < endChunk; chunk++ {
 
 			// TODO make a version of GetTreeKeyCodeChunk without the bigint
 			index := trieUtils.GetTreeKeyCodeChunk(addr[:], uint256.NewInt(chunk))
-			// FIXME(@gballet) invalid code chunk, the jumpdest is missing
-			statelessGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, code[chunk*31:chunk*31+31])
+			statelessGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
 		}
 
 	}
@@ -158,13 +156,11 @@ func gasExtCodeCopy(evm *EVM, contract *Contract, stack *Stack, mem *Memory, mem
 		addr := common.Address(a.Bytes20())
 		chunk := uint64CodeOffset / 31
 		endChunk := uint64CodeEnd / 31
-		// TODO(@gballet) implement StateDB::GetCodeChunk()
-		code := evm.StateDB.GetCode(addr)
 		// XXX uint64 overflow in condition check
 		for ; chunk < endChunk; chunk++ {
 			// TODO(@gballet) make a version of GetTreeKeyCodeChunk without the bigint
 			index := trieUtils.GetTreeKeyCodeChunk(addr[:], uint256.NewInt(chunk))
-			statelessGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, code[31*chunk:31*(chunk+1)])
+			statelessGas += evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
 		}
 
 	}

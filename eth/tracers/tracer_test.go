@@ -62,7 +62,7 @@ func runTrace(tracer *Tracer, vmctx *vmContext, chaincfg *params.ChainConfig) (j
 	env := vm.NewEVM(vmctx.blockCtx, vmctx.txCtx, &dummyStatedb{}, chaincfg, vm.Config{Debug: true, Tracer: tracer})
 	var (
 		startGas uint64 = 10000
-		value           = big.NewInt(0)
+		value           = big.NewInt(10000)
 	)
 	contract := vm.NewContract(account{}, account{}, value, startGas)
 	contract.Code = []byte{byte(vm.PUSH1), 0x1, byte(vm.PUSH1), 0x1, 0x0}

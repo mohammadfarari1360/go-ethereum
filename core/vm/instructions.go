@@ -377,26 +377,48 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 	} else {
 		codeCopy := getData(scope.Contract.Code, uint64CodeOffset, length.Uint64())
 		scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
+
+		touchEachChunks(uint64CodeOffset, uint64CodeEnd, codeCopy, scope.Contract, interpreter.evm)
 	}
 
 	return nil, nil
 }
+
+// Helper function to touch every chunk in a code range
+func touchEachChunks(start, end uint64, code []byte, contract *Contract, evm *EVM) {
+	for chunk := start / 31; chunk <= end/31; chunk++ {
+		index := trieUtils.GetTreeKeyCodeChunk(contract.Address().Bytes(), uint256.NewInt(chunk))
+		count := uint64(0)
+		// Look for the first non-code byte
+		for ; count < 31 && !contract.IsCode(chunk*31+count); count++ {
+		}
+		var value [32]byte
+		value[0] = byte(count)
+		copy(value[1:], code[chunk*31:(chunk+1)*31])
+		evm.Accesses.TouchAddress(index, value[:])
+	}
+}
+
+// copyCodeFromAccesses perform codecopy from the witness, not from the db.
 func copyCodeFromAccesses(addr common.Address, codeOffset, codeEnd, memOffset uint64, in *EVMInterpreter, scope *ScopeContext) {
 	chunk := codeOffset / 31
 	endChunk := codeEnd / 31
-	start := codeOffset % 31
-	offset := uint64(0)
+	start := codeOffset % 31 // start inside the first code chunk
+	offset := uint64(0)      // memory offset to write to
 	// XXX uint64 overflow in condition check
 	for end := uint64(31); chunk < endChunk; chunk, start = chunk+1, 0 {
-
+		// case of the last chunk: figure out how many bytes need to
+		// be extracted from the last chunk.
 		if chunk+1 == endChunk {
 			end = codeEnd % 31
 		}
+
 		// TODO make a version of GetTreeKeyCodeChunk without the bigint
 		index := common.BytesToHash(trieUtils.GetTreeKeyCodeChunk(addr[:], uint256.NewInt(chunk)))
 		h := in.evm.accesses[index]
-		scope.Memory.Set(memOffset+offset, end-start, h[1+start:1+end])
-		offset += end - start
+		//in.evm.Accesses.TouchAddress(index.Bytes(), h[1+start:1+end])
+		scope.Memory.Set(memOffset+offset, end-start, h[1+start:end])
+		offset += 31 - start
 	}
 }
 
@@ -422,6 +444,8 @@ func opExtCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 	} else {
 		codeCopy := getData(interpreter.evm.StateDB.GetCode(addr), uint64CodeOffset, length.Uint64())
 		scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
+
+		touchEachChunks(uint64CodeOffset, uint64CodeEnd, codeCopy, scope.Contract, interpreter.evm)
 	}
 
 	return nil, nil
