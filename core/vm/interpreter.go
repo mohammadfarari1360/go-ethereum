@@ -200,9 +200,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		var codePage common.Hash
 		if in.evm.ChainConfig().UseVerkle {
 			index := trieUtils.GetTreeKeyCodeChunk(contract.Address().Bytes(), uint256.NewInt(pc/31))
-			// FIXME(@gballet) this is only valid when not executing in stateless mode
-			contract.Gas -= in.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, contract.Code[pc&0x1F:pc&0x1F+31])
 
+			var value [32]byte
 			if in.evm.accesses != nil {
 				codePage, inWitness = in.evm.accesses[common.BytesToHash(index)]
 				// Return an error if we're in stateless mode
@@ -213,7 +212,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				if !inWitness {
 					return nil, errors.New("code chunk missing from proof")
 				}
+				copy(value[:], codePage[:])
+			} else {
+				// Calculate the chunk and charge gas
+				chunk := pc / 31
+				count := uint64(0)
+				// Look for the first code byte (i.e. no pushdata)
+				for ; count < 31 && !contract.IsCode(chunk*31+count); count++ {
+				}
+				value[0] = byte(count)
+				copy(value[1:], contract.Code[chunk*31:(chunk+1)*31])
 			}
+			contract.Gas -= in.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, value[:])
 		}
 
 		if inWitness {
