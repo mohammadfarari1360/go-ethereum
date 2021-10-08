@@ -902,6 +902,25 @@ func opPush1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 	*pc += 1
 	if *pc < codeLen {
 		scope.Stack.push(integer.SetUint64(uint64(scope.Contract.Code[*pc])))
+		// touch next chunk if PUSH1 is at the boundary. if so, *pc has
+		// advanced past this boundary.
+		if *pc%31 == 0 {
+			// touch push data by adding the last byte of the pushdata
+			var value [32]byte
+			chunk := *pc / 31
+			count := uint64(0)
+			// Look for the first code byte (i.e. no pushdata)
+			for ; count < 31 && !scope.Contract.IsCode(chunk*31+count); count++ {
+			}
+			value[0] = byte(count)
+			endMin := (chunk + 1) * 31
+			if endMin > uint64(len(scope.Contract.Code)) {
+				endMin = uint64(len(scope.Contract.Code))
+			}
+			copy(value[1:], scope.Contract.Code[chunk*31:endMin])
+			index := trieUtils.GetTreeKeyCodeChunk(scope.Contract.Address().Bytes(), uint256.NewInt(chunk))
+			interpreter.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
+		}
 	} else {
 		scope.Stack.push(integer.Clear())
 	}
@@ -926,6 +945,33 @@ func makePush(size uint64, pushByteSize int) executionFunc {
 		integer := new(uint256.Int)
 		scope.Stack.push(integer.SetBytes(common.RightPadBytes(
 			scope.Contract.Code[startMin:endMin], pushByteSize)))
+
+		// touch push data by adding the last byte of the pushdata
+		var value [32]byte
+		chunk := uint64(endMin-1) / 31
+		count := uint64(0)
+		// Look for the first code byte (i.e. no pushdata)
+		for ; count < 31 && !scope.Contract.IsCode(chunk*31+count); count++ {
+		}
+		value[0] = byte(count)
+		copy(value[1:], scope.Contract.Code[chunk*31:endMin])
+		index := trieUtils.GetTreeKeyCodeChunk(scope.Contract.Address().Bytes(), uint256.NewInt(chunk))
+		interpreter.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
+
+		// in the case of PUSH32, the end data might be two chunks away,
+		// so also get the middle chunk.
+		if pushByteSize == 32 {
+			chunk = uint64(endMin-2) / 31
+			count = uint64(0)
+			// Look for the first code byte (i.e. no pushdata)
+			for ; count < 31 && !scope.Contract.IsCode(chunk*31+count); count++ {
+			}
+			value[0] = byte(count)
+			copy(value[1:], scope.Contract.Code[chunk*31:(chunk+1)*31])
+			index := trieUtils.GetTreeKeyCodeChunk(scope.Contract.Address().Bytes(), uint256.NewInt(chunk))
+			interpreter.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
+
+		}
 
 		*pc += size
 		return nil, nil

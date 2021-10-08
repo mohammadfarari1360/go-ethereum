@@ -214,7 +214,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				}
 				copy(value[:], codePage[:])
 			} else {
-				// Calculate the chunk and charge gas
+				// Calculate the chunk
 				chunk := pc / 31
 				count := uint64(0)
 				// Look for the first code byte (i.e. no pushdata)
