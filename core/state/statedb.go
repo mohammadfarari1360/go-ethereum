@@ -896,6 +896,14 @@ func (s *StateDB) clearJournalAndRefund() {
 	s.validRevisions = s.validRevisions[:0] // Snapshots can be created without journal entires
 }
 
+// Cap commits all layers to the disklayer
+func (s *StateDB) Cap(root common.Hash) error {
+	if s.snaps != nil {
+		return s.snaps.Cap(root, 0)
+	}
+	return nil
+}
+
 // Commit writes the state to the underlying in-memory trie database.
 func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 	if s.dbErr != nil {
