@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -257,10 +256,6 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 // ToBlock creates the genesis block and writes state of a genesis specification
 // to the given database (or discards it if nil).
 func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
-	return g.ToBlockWithSnaps(db, nil)
-}
-
-func (g *Genesis) ToBlockWithSnaps(db ethdb.Database, snaps *snapshot.Tree) *types.Block {
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
@@ -268,7 +263,7 @@ func (g *Genesis) ToBlockWithSnaps(db ethdb.Database, snaps *snapshot.Tree) *typ
 	if g.Config != nil {
 		trieCfg = &trie.Config{UseVerkle: g.Config.UseVerkle}
 	}
-	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithConfig(db, trieCfg), snaps)
+	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithConfig(db, trieCfg), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -320,11 +315,7 @@ func (g *Genesis) ToBlockWithSnaps(db ethdb.Database, snaps *snapshot.Tree) *typ
 // Commit writes the block and state of a genesis specification to the database.
 // The block is committed as the canonical head block.
 func (g *Genesis) Commit(db ethdb.Database) (*types.Block, error) {
-	return g.CommitWithSnaps(db, nil)
-}
-
-func (g *Genesis) CommitWithSnaps(db ethdb.Database, snaps *snapshot.Tree) (*types.Block, error) {
-	block := g.ToBlockWithSnaps(db, snaps)
+	block := g.ToBlock(db)
 	if block.Number().Sign() != 0 {
 		return nil, errors.New("can't commit genesis block with number > 0")
 	}
