@@ -264,11 +264,7 @@ func (g *Genesis) ToBlockWithSnaps(db ethdb.Database, snaps *snapshot.Tree) *typ
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
-	var trieCfg *trie.Config
-	if g.Config != nil {
-		trieCfg = &trie.Config{UseVerkle: g.Config.UseVerkle}
-	}
-	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithConfig(db, trieCfg), snaps)
+	statedb, err := state.New(common.Hash{}, state.NewDatabase(db), snaps)
 	if err != nil {
 		panic(err)
 	}

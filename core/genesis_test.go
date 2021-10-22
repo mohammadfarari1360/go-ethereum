@@ -209,3 +209,18 @@ func TestGenesisHashes(t *testing.T) {
 		}
 	}
 }
+
+func TestGenesisSnapshotCreation(t *testing.T) {
+	customg := Genesis{
+		Config: &params.ChainConfig{HomesteadBlock: big.NewInt(3)},
+		Alloc: GenesisAlloc{
+			{1}: {Balance: big.NewInt(1), Storage: map[common.Hash]common.Hash{{1}: {1}}},
+		},
+	}
+	db := rawdb.NewMemoryDatabase()
+	customg.MustCommit(db)
+	customg.ToBlock(db)
+	if ok, err := db.Has([]byte("snapshotRoot")); !ok || err != nil {
+		t.Fatalf("could not find snapshot root: %v %v", ok, err)
+	}
+}
