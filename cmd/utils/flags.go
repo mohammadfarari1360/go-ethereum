@@ -1593,7 +1593,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if !ctx.GlobalIsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 86 // 'V'
 		}
-		cfg.Genesis = core.DefaultGenesisBlock()
+		cfg.Genesis = core.DefaultVerkleGenesisBlock()
 		cfg.Genesis.Config.UseVerkle = true
 		SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
 	case ctx.GlobalBool(RopstenFlag.Name):

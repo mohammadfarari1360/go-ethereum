@@ -678,6 +678,7 @@ func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 		family:    mapset.NewSet(),
 		uncles:    mapset.NewSet(),
 		header:    header,
+		witness:   types.NewAccessWitness(),
 	}
 	// when 08 is processed ancestors contain 07 (quick block)
 	for _, ancestor := range w.chain.GetBlocksFromHash(parent.Hash(), 7) {
