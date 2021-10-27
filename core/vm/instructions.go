@@ -386,7 +386,7 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // Helper function to touch every chunk in a code range
 func touchEachChunks(start, end uint64, code []byte, contract *Contract, evm *EVM) {
-	for chunk := start / 31; chunk <= end/31; chunk++ {
+	for chunk := start / 31; chunk <= end/31 && chunk <= uint64(len(code))/31; chunk++ {
 		index := trieUtils.GetTreeKeyCodeChunk(contract.Address().Bytes(), uint256.NewInt(chunk))
 		count := uint64(0)
 		// Look for the first code byte (i.e. no pushdata)
@@ -394,7 +394,11 @@ func touchEachChunks(start, end uint64, code []byte, contract *Contract, evm *EV
 		}
 		var value [32]byte
 		value[0] = byte(count)
-		copy(value[1:], code[chunk*31:(chunk+1)*31])
+		end := (chunk + 1) * 31
+		if end > uint64(len(code)) {
+			end = uint64(len(code))
+		}
+		copy(value[1:], code[chunk*31:end])
 		evm.Accesses.TouchAddress(index, value[:])
 	}
 }
