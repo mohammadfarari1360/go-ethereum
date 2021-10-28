@@ -216,12 +216,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			} else {
 				// Calculate the chunk
 				chunk := pc / 31
+				end := (chunk + 1) * 31
+				if end >= uint64(len(contract.Code)) {
+					end = uint64(len(contract.Code))
+				}
 				count := uint64(0)
 				// Look for the first code byte (i.e. no pushdata)
-				for ; count < 31 && !contract.IsCode(chunk*31+count); count++ {
+				for ; chunk*31+count < end && count < 31 && !contract.IsCode(chunk*31+count); count++ {
 				}
 				value[0] = byte(count)
-				copy(value[1:], contract.Code[chunk*31:(chunk+1)*31])
+				copy(value[1:], contract.Code[chunk*31:end])
 			}
 			contract.Gas -= in.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, value[:])
 		}
