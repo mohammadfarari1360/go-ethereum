@@ -135,6 +135,7 @@ func (trie *VerkleTrie) Commit(onleaf LeafCallback) (common.Hash, int, error) {
 		}
 	}
 
+	// XXX onleaf hasn't been called
 	return trie.Hash(), commitCount, nil
 }
 
