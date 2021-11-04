@@ -49,6 +49,7 @@ var (
 		ArgsUsage: "<genesisPath>",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
+			utils.VerkleFlag,
 		},
 		Category: "BLOCKCHAIN COMMANDS",
 		Description: `
@@ -199,6 +200,10 @@ func initGenesis(ctx *cli.Context) error {
 	// Open and initialise both full and light databases
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
+
+	if ctx.GlobalBool(utils.VerkleFlag.Name) {
+		genesis.Config.UseVerkle = true
+	}
 
 	for _, name := range []string{"chaindata", "lightchaindata"} {
 		chaindb, err := stack.OpenDatabase(name, 0, 0, "", false)

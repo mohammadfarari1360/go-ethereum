@@ -198,7 +198,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// associated witness costs.
 		inWitness := false
 		var codePage common.Hash
-		if in.evm.chainRules.IsCancun {
+		if in.evm.ChainConfig().UseVerkle {
 			index := trieUtils.GetTreeKeyCodeChunk(contract.Address().Bytes(), uint256.NewInt(pc/31))
 
 			var value [32]byte
