@@ -25,10 +25,10 @@ jobs:
           key: go-mod-v4-{{ checksum "go.sum" }}
           paths:
             - "/go/pkg/mod"
-      - run:
-          name: Run linter
-          command: |
-            go run build/ci.go lint
+      #- run:
+      #    name: Run linter
+      #    command: |
+      #      go run build/ci.go lint
       - run:
           name: Run tests
           command: |
