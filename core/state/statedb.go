@@ -713,7 +713,9 @@ func (s *StateDB) Copy() *StateDB {
 		preimages:           make(map[common.Hash][]byte, len(s.preimages)),
 		journal:             newJournal(),
 		hasher:              crypto.NewKeccakState(),
-		witness:             s.witness.Copy(),
+	}
+	if s.witness != nil {
+		state.witness = s.witness.Copy()
 	}
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
