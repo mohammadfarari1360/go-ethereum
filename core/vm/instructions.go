@@ -372,12 +372,9 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 	if overflow {
 		uint64CodeEnd = 0xffffffffffffffff
 	}
-	if interpreter.evm.accesses != nil {
-		copyCodeFromAccesses(scope.Contract.Address(), uint64CodeOffset, uint64CodeEnd, memOffset.Uint64(), interpreter, scope)
-	} else {
-		codeCopy := getData(scope.Contract.Code, uint64CodeOffset, length.Uint64())
-		scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
-
+	codeCopy := getData(scope.Contract.Code, uint64CodeOffset, length.Uint64())
+	scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
+	if interpreter.evm.TxContext.Accesses != nil {
 		touchEachChunks(uint64CodeOffset, uint64CodeEnd, codeCopy, scope.Contract, interpreter.evm)
 	}
 
@@ -951,37 +948,39 @@ func makePush(size uint64, pushByteSize int) executionFunc {
 		scope.Stack.push(integer.SetBytes(common.RightPadBytes(
 			scope.Contract.Code[startMin:endMin], pushByteSize)))
 
-		// touch push data by adding the last byte of the pushdata
-		var value [32]byte
-		chunk := uint64(endMin-1) / 31
-		count := uint64(0)
-		// Look for the first code byte (i.e. no pushdata)
-		for ; count < 31 && !scope.Contract.IsCode(chunk*31+count); count++ {
-		}
-		value[0] = byte(count)
-		copy(value[1:], scope.Contract.Code[chunk*31:endMin])
-		index := trieUtils.GetTreeKeyCodeChunk(scope.Contract.Address().Bytes(), uint256.NewInt(chunk))
-		interpreter.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
-
-		// in the case of PUSH32, the end data might be two chunks away,
-		// so also get the middle chunk. There is a boundary condition
-		// check (endMin > 2) in the case the code is a single PUSH32
-		// insctruction, whose immediate are just 0s.
-		if pushByteSize == 32 && endMin > 2 {
-			chunk = uint64(endMin-2) / 31
-			count = uint64(0)
+		if interpreter.evm.TxContext.Accesses != nil {
+			// touch push data by adding the last byte of the pushdata
+			var value [32]byte
+			chunk := uint64(endMin-1) / 31
+			count := uint64(0)
 			// Look for the first code byte (i.e. no pushdata)
 			for ; count < 31 && !scope.Contract.IsCode(chunk*31+count); count++ {
 			}
 			value[0] = byte(count)
-			end := (chunk + 1) * 31
-			if end > uint64(len(scope.Contract.Code)) {
-				end = uint64(len(scope.Contract.Code))
-			}
-			copy(value[1:], scope.Contract.Code[chunk*31:end])
+			copy(value[1:], scope.Contract.Code[chunk*31:endMin])
 			index := trieUtils.GetTreeKeyCodeChunk(scope.Contract.Address().Bytes(), uint256.NewInt(chunk))
 			interpreter.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
 
+			// in the case of PUSH32, the end data might be two chunks away,
+			// so also get the middle chunk. There is a boundary condition
+			// check (endMin > 2) in the case the code is a single PUSH32
+			// insctruction, whose immediate are just 0s.
+			if pushByteSize == 32 && endMin > 2 {
+				chunk = uint64(endMin-2) / 31
+				count = uint64(0)
+				// Look for the first code byte (i.e. no pushdata)
+				for ; count < 31 && !scope.Contract.IsCode(chunk*31+count); count++ {
+				}
+				value[0] = byte(count)
+				end := (chunk + 1) * 31
+				if end > uint64(len(scope.Contract.Code)) {
+					end = uint64(len(scope.Contract.Code))
+				}
+				copy(value[1:], scope.Contract.Code[chunk*31:end])
+				index := trieUtils.GetTreeKeyCodeChunk(scope.Contract.Address().Bytes(), uint256.NewInt(chunk))
+				interpreter.evm.TxContext.Accesses.TouchAddressAndChargeGas(index, nil)
+
+			}
 		}
 
 		*pc += size
