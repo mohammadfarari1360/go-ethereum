@@ -441,12 +441,10 @@ func opExtCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 		uint64CodeEnd = 0xffffffffffffffff
 	}
 	addr := common.Address(a.Bytes20())
-	if interpreter.evm.accesses != nil {
-		copyCodeFromAccesses(addr, uint64CodeOffset, uint64CodeEnd, memOffset.Uint64(), interpreter, scope)
-	} else {
-		codeCopy := getData(interpreter.evm.StateDB.GetCode(addr), uint64CodeOffset, length.Uint64())
-		scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
+	codeCopy := getData(interpreter.evm.StateDB.GetCode(addr), uint64CodeOffset, length.Uint64())
+	scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
 
+	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
 		touchEachChunks(uint64CodeOffset, uint64CodeEnd, codeCopy, scope.Contract, interpreter.evm)
 	}
 

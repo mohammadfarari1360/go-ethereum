@@ -661,8 +661,8 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 		r.Sub(r, header.Number)
 		r.Mul(r, blockReward)
 		r.Div(r, big8)
-		uncleCoinbase := utils.GetTreeKeyBalance(uncle.Coinbase.Bytes())
 		if state.Witness() != nil {
+			uncleCoinbase := utils.GetTreeKeyBalance(uncle.Coinbase.Bytes())
 			state.Witness().TouchAddress(uncleCoinbase, state.GetBalance(uncle.Coinbase).Bytes())
 		}
 		state.AddBalance(uncle.Coinbase, r)
