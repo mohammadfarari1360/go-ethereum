@@ -287,22 +287,21 @@ func (s *StateDB) GetBalance(addr common.Address) *big.Int {
 }
 
 func (s *StateDB) GetNonceLittleEndian(address common.Address) []byte {
-        var paddedNonceBytes [32]byte
-        nonce := s.GetNonce(address)
-        binary.LittleEndian.PutUint64(paddedNonceBytes[0:8], nonce)
-        return paddedNonceBytes[:]
+        var nonceBytes [8]byte
+        binary.LittleEndian.PutUint64(nonceBytes[:], s.GetNonce(address))
+        return nonceBytes[:]
 }
 
 func (s *StateDB) GetBalanceLittleEndian(address common.Address) []byte {
         var paddedBalance [32]byte
         balanceBytes := s.GetBalance(address).Bytes()
-        // swap big-endian to little-endian
+        // swap to little-endian
         for i, j := 0, len(balanceBytes)-1; i < j; i, j = i+1, j-1 {
             balanceBytes[i], balanceBytes[j] = balanceBytes[j], balanceBytes[i]
         }
 
         copy(paddedBalance[:len(balanceBytes)], balanceBytes)
-        return paddedBalance[:]
+        return paddedBalance[:len(balanceBytes)]
 }
 
 func (s *StateDB) GetNonce(addr common.Address) uint64 {

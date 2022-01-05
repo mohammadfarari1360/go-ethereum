@@ -273,21 +273,6 @@ func tryConsumeGas(gasPool *uint64, gas uint64) bool {
         return true
 }
 
-func bigIntToLittleEndianBytes(value *big.Int) []byte {
-        var paddedVal [32] byte
-        if len(value.Bytes()) > 32 {
-                panic("value larger than 32 bytes")
-        }
-
-        valBytes := value.Bytes()
-        for i, j := 0, len(valBytes)-1; i < j; i, j = i+1, j-1 {
-            valBytes[i], valBytes[j] = valBytes[j], valBytes[i]
-        }
-
-        copy(paddedVal[:len(valBytes)], valBytes)
-        return paddedVal[:]
-}
-
 // TransitionDb will transition the state by applying the current message and
 // returning the evm execution result with following fields.
 //
