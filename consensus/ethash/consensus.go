@@ -672,9 +672,7 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 	}
 	if config.IsCancun(header.Number) {
 		coinbase := utils.GetTreeKeyBalance(header.Coinbase.Bytes())
-		if state.Witness() != nil {
-			state.Witness().TouchAddress(coinbase, state.GetBalance(header.Coinbase).Bytes())
-		}
+		state.Witness().TouchAddress(coinbase, state.GetBalance(header.Coinbase).Bytes())
 	}
 	state.AddBalance(header.Coinbase, reward)
 }
