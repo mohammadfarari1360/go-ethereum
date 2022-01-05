@@ -181,6 +181,27 @@ func tryConsumeGas(gasPool *uint64, gas uint64) bool {
 	return true
 }
 
+// TODO refactor getBalanceLittleEndian and getNonceLittleEndian to not duplicate so much code
+
+func getNonceLittleEndian(evm *EVM, address common.Address) []byte {
+	var paddedNonceBytes [32]byte
+	nonce := evm.StateDB.GetNonce(address)
+	binary.LittleEndian.PutUint64(paddedNonceBytes[0:8], nonce)
+	return paddedNonceBytes[:]
+}
+
+func getBalanceLittleEndian(evm *EVM, address common.Address) []byte {
+	var paddedBalance [32]byte
+	balanceBytes := evm.StateDB.GetBalance(address).Bytes()
+	// swap big-endian to little-endian
+	for i, j := 0, len(balanceBytes)-1; i < j; i, j = i+1, j-1 {
+	    balanceBytes[i], balanceBytes[j] = balanceBytes[j], balanceBytes[i]
+	}
+
+	copy(paddedBalance[:len(balanceBytes)], balanceBytes)
+	return paddedBalance[:]
+}
+
 // Call executes the contract associated with the addr with the given input as
 // parameters. It also handles any necessary value transfer required and takes
 // the necessary steps to create accounts and reverses the state in case of an
@@ -202,6 +223,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 
 	if !evm.StateDB.Exist(addr) {
 		if !isPrecompile && evm.chainRules.IsEIP158 && value.Sign() == 0 {
+			// TODO proof of absence here?
 			// Calling a non existing account, don't do anything, but ping the tracer
 			if evm.Config.Debug {
 				if evm.depth == 0 {
@@ -214,7 +236,13 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			}
 			return nil, gas, nil
 		}
+
 		evm.StateDB.CreateAccount(addr)
+	}
+	if evm.Accesses != nil && value.Sign() != 0 {
+		callerBalanceBefore := evm.StateDB.GetBalanceLittleEndian(caller.Address())
+		targetBalanceBefore := evm.StateDB.GetBalanceLittleEndian(addr)
+		evm.Accesses.SetLeafValuesValueTransfer(caller.Address().Bytes()[:], addr[:], callerBalanceBefore, targetBalanceBefore)
 	}
 	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
 
@@ -240,21 +268,16 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		code := evm.StateDB.GetCode(addr)
+		if evm.Accesses != nil {
+			codeSize := uint64(len(code))
+			var codeSizeBytes [32]byte
+			binary.LittleEndian.PutUint64(codeSizeBytes[:8], codeSize)
+			evm.Accesses.SetLeafValuesMessageCall(addr[:], codeSizeBytes[:])
+		}
+
 		if len(code) == 0 {
 			ret, err = nil, nil // gas is unchanged
 		} else {
-			if evm.Accesses != nil {
-				// Touch the account data
-				var data [32]byte
-				evm.Accesses.TouchAddress(utils.GetTreeKeyVersion(addr.Bytes()), data[:])
-				binary.BigEndian.PutUint64(data[:], evm.StateDB.GetNonce(addr))
-				evm.Accesses.TouchAddress(utils.GetTreeKeyNonce(addr[:]), data[:])
-				evm.Accesses.TouchAddress(utils.GetTreeKeyBalance(addr[:]), evm.StateDB.GetBalance(addr).Bytes())
-				binary.BigEndian.PutUint64(data[:], uint64(len(code)))
-				evm.Accesses.TouchAddress(utils.GetTreeKeyCodeSize(addr[:]), data[:])
-				evm.Accesses.TouchAddress(utils.GetTreeKeyCodeKeccak(addr[:]), evm.StateDB.GetCodeHash(addr).Bytes())
-			}
-
 			addrCopy := addr
 			// If the account has no code, we can abort here
 			// The depth-check is already done, and precompiles handled above
@@ -315,6 +338,12 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
+		if evm.Accesses != nil {
+			codeSize := uint64(evm.StateDB.GetCodeSize(addr))
+			var codeSizeBytes [32]byte
+			binary.LittleEndian.PutUint64(codeSizeBytes[:8], codeSize)
+			evm.Accesses.SetLeafValuesMessageCall(addr.Bytes()[:], codeSizeBytes[:])
+		}
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -359,6 +388,12 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
+		if evm.Accesses != nil {
+			codeSize := uint64(evm.StateDB.GetCodeSize(addr))
+			var codeSizeBytes [32]byte
+			binary.LittleEndian.PutUint64(codeSizeBytes[:8], codeSize)
+			evm.Accesses.SetLeafValuesMessageCall(addr.Bytes()[:], codeSizeBytes[:])
+		}
 		addrCopy := addr
 		// Initialise a new contract and make initialise the delegate values
 		contract := NewContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
@@ -408,9 +443,16 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		}(gas)
 	}
 
+
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
+		if evm.Accesses != nil {
+			codeSize := uint64(evm.StateDB.GetCodeSize(addr))
+			var codeSizeBytes [32]byte
+			binary.LittleEndian.PutUint64(codeSizeBytes[:8], codeSize)
+			evm.Accesses.SetLeafValuesMessageCall(addr.Bytes()[:], codeSizeBytes[:])
+		}
 		// At this point, we use a copy of address. If we don't, the go compiler will
 		// leak the 'contract' to the outer scope, and make allocation for 'contract'
 		// even if the actual execution ends on RunPrecompiled above.
@@ -448,6 +490,13 @@ func (c *codeAndHash) Hash() common.Hash {
 
 // create creates a new contract using code as deployment code.
 func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64, value *big.Int, address common.Address, typ OpCode) ([]byte, common.Address, uint64, error) {
+	var zeroVerkleLeaf [32]byte
+	var balanceBefore []byte
+
+	if evm.Accesses != nil {
+		evm.Accesses.SetLeafValuesContractCreateInit(address.Bytes()[:], zeroVerkleLeaf[:])
+	}
+
 	// Depth check execution. Fail if we're trying to execute above the
 	// limit.
 	if evm.depth > int(params.CallCreateDepth) {
@@ -469,14 +518,25 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	// Ensure there's no existing contract already at the designated address
 	contractHash := evm.StateDB.GetCodeHash(address)
 	if evm.StateDB.GetNonce(address) != 0 || (contractHash != (common.Hash{}) && contractHash != emptyCodeHash) {
+		// TODO this is a case where the witness should touch the already-created account
+		// however, it seems impossible to ever actually encounter this.
 		return nil, common.Address{}, 0, ErrContractAddressCollision
 	}
 	// Create a new account on the state
 	snapshot := evm.StateDB.Snapshot()
+
 	evm.StateDB.CreateAccount(address)
 	if evm.chainRules.IsEIP158 {
 		evm.StateDB.SetNonce(address, 1)
 	}
+	if evm.Accesses != nil {
+		// note: assumption is that the nonce, code size, code hash
+		// will be 0x0000...00 at the target account before it is created
+		// otherwise would imply contract creation collision which is
+		// impossible if self-destruct is removed
+		balanceBefore = getBalanceLittleEndian(evm, address)
+	}
+
 	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value)
 
 	// Initialise a new contract and set the code that is to be used by the EVM.
@@ -533,6 +593,22 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 		}
 	}
 
+	if err == nil && evm.Accesses != nil {
+		// TODO:
+		// unsure whether to charge this in gas_table.go, the spec would indicate
+		// that doing it here (after the creation payload has been executed) is
+		// the right place for it
+		if !contract.UseGas(evm.Accesses.TouchAndChargeContractCreateCompleted(address.Bytes()[:], value.Sign() != 0)) {
+			evm.StateDB.RevertToSnapshot(snapshot)
+			err = ErrOutOfGas
+		} else {
+			evm.Accesses.SetLeafValuesContractCreateCompleted(address.Bytes()[:], zeroVerkleLeaf[:], zeroVerkleLeaf[:])
+			if value.Sign() != 0 {
+				evm.Accesses.TouchAddress(utils.GetTreeKeyBalance(address.Bytes()[:]), balanceBefore)
+			}
+		}
+	}
+
 	if evm.Config.Debug {
 		if evm.depth == 0 {
 			evm.Config.Tracer.CaptureEnd(ret, gas-contract.Gas, time.Since(start), err)
@@ -553,7 +629,7 @@ func (evm *EVM) Create(caller ContractRef, code []byte, gas uint64, value *big.I
 //
 // The different between Create2 with Create is Create2 uses sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code))[12:]
 // instead of the usual sender-and-nonce-hash as the address where the contract is initialized at.
-func (evm *EVM) Create2(caller ContractRef, code []byte, gas uint64, endowment *big.Int, salt *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
+func (evm *EVM) Create2(caller *Contract, code []byte, gas uint64, endowment *big.Int, salt *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
 	codeAndHash := &codeAndHash{code: code}
 	contractAddr = crypto.CreateAddress2(caller.Address(), salt.Bytes32(), codeAndHash.Hash().Bytes())
 	return evm.create(caller, codeAndHash, gas, endowment, contractAddr, CREATE2)
