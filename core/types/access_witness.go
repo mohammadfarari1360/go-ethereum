@@ -71,10 +71,8 @@ func (aw *AccessWitness) SetLeafValuesValueTransfer(callerAddr, targetAddr, call
 	aw.TouchAddress(utils.GetTreeKeyBalance(targetAddr[:]), targetBalance)
 }
 
-// TouchAndChargeContractCreate init creates the following write events for the
-// created addresss:
-// 	(contract_address, 0, VERSION_LEAF_KEY)
-// 	(contract_address, 0, NONCE_LEAF_KEY)
+// TouchAndChargeContractCreateInit charges access costs to initiate
+// a contract creation
 func (aw *AccessWitness) TouchAndChargeContractCreateInit(addr []byte) uint64 {
 	var gas uint64
 	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyVersion(addr[:]), nil)
@@ -88,13 +86,9 @@ func (aw *AccessWitness) SetLeafValuesContractCreateInit(addr, nonce []byte) {
 	aw.TouchAddress(utils.GetTreeKeyNonce(addr[:]), nonce)
 }
 
-// TouchAndChargeContractCreateCompleted creates the following write events for the created
-// address:
-// 	(contract_address, 0, VERSION_LEAF_KEY)
-// 	(contract_address, 0, NONCE_LEAF_KEY)
-// 	(contract_address, 0, BALANCE_LEAF_KEY)
-// 	(contract_address, 0, CODE_KECCAK_LEAF_KEY)
-// 	(contract_address, 0, CODE_SIZE_LEAF_KEY)
+// TouchAndChargeContractCreateCompleted charges access access costs after
+// the completion of a contract creation to populate the created account in
+// the tree
 func (aw *AccessWitness) TouchAndChargeContractCreateCompleted(addr []byte, withValue bool) uint64 {
 	var gas uint64
 	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyVersion(addr[:]), nil)
@@ -125,13 +119,6 @@ func (aw *AccessWitness) TouchTxAndChargeGas(originAddr, targetAddr []byte) uint
 	gasUsed += aw.TouchAddressAndChargeGas(utils.GetTreeKeyCodeSize(targetAddr[:]), nil)
 	gasUsed += aw.TouchAddressAndChargeGas(utils.GetTreeKeyCodeKeccak(targetAddr[:]), nil)
 	return gasUsed
-	// TODO write events: 
-	/*
-	(tx.origin, 0, NONCE_LEAF_KEY)
-	if value is non-zero:
-		(tx.origin, 0, BALANCE_LEAF_KEY)
-		(tx.target, 0, BALANCE_LEAF_KEY)
-	*/
 }
 
 func (aw *AccessWitness) TouchTxOriginAndChargeGas(originAddr []byte) uint64 {
