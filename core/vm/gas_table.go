@@ -594,7 +594,9 @@ func gasSelfdestruct(evm *EVM, contract *Contract, stack *Stack, mem *Memory, me
 	}
 
 	if evm.Accesses != nil {
-		log.Warn("verkle witnesses accumulation not supported for selfdestruct")
+		// TODO turn this into a panic (when we are sure this method
+		// will never execute when verkle is enabled)
+		log.Warn("verkle witness accumulation not supported for selfdestruct")
 	}
 
 	if !evm.StateDB.HasSuicided(contract.Address()) {
