@@ -130,7 +130,7 @@ func (aw *AccessWitness) TouchTxOriginAndChargeGas(originAddr []byte) uint64 {
 	return gasUsed
 }
 
-func (aw *AccessWitness) TouchTxNonCreationAndChargeGas(targetAddr []byte) uint64 {
+func (aw *AccessWitness) TouchTxExistingAndChargeGas(targetAddr []byte) uint64 {
 	var gasUsed uint64
 	var version [32]byte
 	gasUsed += aw.TouchAddressAndChargeGas(utils.GetTreeKeyVersion(targetAddr[:]), version[:])
@@ -146,7 +146,7 @@ func (aw *AccessWitness) SetTxTouchedLeaves(originAddr, originBalance, originNon
 	aw.TouchAddress(utils.GetTreeKeyNonce(originAddr[:]), originNonce)
 }
 
-func (aw *AccessWitness) SetTxNonCreationTouchedLeaves(targetAddr, targetBalance, targetNonce, targetCodeSize, targetCodeHash []byte) {
+func (aw *AccessWitness) SetTxExistingTouchedLeaves(targetAddr, targetBalance, targetNonce, targetCodeSize, targetCodeHash []byte) {
 	aw.TouchAddress(utils.GetTreeKeyBalance(targetAddr[:]), targetBalance)
 	aw.TouchAddress(utils.GetTreeKeyNonce(targetAddr[:]), targetNonce)
 	aw.TouchAddress(utils.GetTreeKeyCodeSize(targetAddr[:]), targetCodeSize)
