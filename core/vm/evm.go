@@ -181,27 +181,6 @@ func tryConsumeGas(gasPool *uint64, gas uint64) bool {
 	return true
 }
 
-// TODO refactor getBalanceLittleEndian and getNonceLittleEndian to not duplicate so much code
-
-func getNonceLittleEndian(evm *EVM, address common.Address) []byte {
-	var paddedNonceBytes [32]byte
-	nonce := evm.StateDB.GetNonce(address)
-	binary.LittleEndian.PutUint64(paddedNonceBytes[0:8], nonce)
-	return paddedNonceBytes[:]
-}
-
-func getBalanceLittleEndian(evm *EVM, address common.Address) []byte {
-	var paddedBalance [32]byte
-	balanceBytes := evm.StateDB.GetBalance(address).Bytes()
-	// swap big-endian to little-endian
-	for i, j := 0, len(balanceBytes)-1; i < j; i, j = i+1, j-1 {
-	    balanceBytes[i], balanceBytes[j] = balanceBytes[j], balanceBytes[i]
-	}
-
-	copy(paddedBalance[:len(balanceBytes)], balanceBytes)
-	return paddedBalance[:]
-}
-
 // Call executes the contract associated with the addr with the given input as
 // parameters. It also handles any necessary value transfer required and takes
 // the necessary steps to create accounts and reverses the state in case of an
@@ -534,7 +513,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 		// will be 0x0000...00 at the target account before it is created
 		// otherwise would imply contract creation collision which is
 		// impossible if self-destruct is removed
-		balanceBefore = getBalanceLittleEndian(evm, address)
+		balanceBefore = evm.StateDB.GetBalanceLittleEndian(address)
 	}
 
 	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value)
