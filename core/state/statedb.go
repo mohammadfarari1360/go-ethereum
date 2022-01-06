@@ -149,11 +149,13 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		accessList:          newAccessList(),
 		hasher:              crypto.NewKeccakState(),
 	}
-	if sdb.snaps == nil && tr.IsVerkle() {
+	if tr.IsVerkle() {
 		sdb.witness = types.NewAccessWitness()
-		sdb.snaps, err = snapshot.New(db.TrieDB().DiskDB(), db.TrieDB(), 1, root, false, true, false, true)
-		if err != nil {
-			return nil, err
+		if sdb.snaps == nil {
+			sdb.snaps, err = snapshot.New(db.TrieDB().DiskDB(), db.TrieDB(), 1, root, false, true, false, true)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	if sdb.snaps != nil {
