@@ -46,6 +46,8 @@ func NewAccessWitness() *AccessWitness {
 	}
 }
 
+// TODO TouchAndCharge + SetLeafValue* does redundant calls to GetTreeKey*
+
 func (aw *AccessWitness) TouchAndChargeMessageCall(addr []byte) uint64 {
 	var gas uint64
 	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyVersion(addr[:]), nil)
