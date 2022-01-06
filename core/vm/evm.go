@@ -497,8 +497,6 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	// Ensure there's no existing contract already at the designated address
 	contractHash := evm.StateDB.GetCodeHash(address)
 	if evm.StateDB.GetNonce(address) != 0 || (contractHash != (common.Hash{}) && contractHash != emptyCodeHash) {
-		// TODO this is a case where the witness should touch the already-created account
-		// however, it seems impossible to ever actually encounter this.
 		return nil, common.Address{}, 0, ErrContractAddressCollision
 	}
 	// Create a new account on the state
@@ -573,10 +571,6 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	}
 
 	if err == nil && evm.Accesses != nil {
-		// TODO:
-		// unsure whether to charge this in gas_table.go, the spec would indicate
-		// that doing it here (after the creation payload has been executed) is
-		// the right place for it
 		if !contract.UseGas(evm.Accesses.TouchAndChargeContractCreateCompleted(address.Bytes()[:], value.Sign() != 0)) {
 			evm.StateDB.RevertToSnapshot(snapshot)
 			err = ErrOutOfGas
