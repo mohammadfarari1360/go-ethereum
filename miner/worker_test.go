@@ -336,7 +336,7 @@ func TestGenerateBlocksAndImportVerkle(t *testing.T) {
 			if _, err := chain.InsertChain([]*types.Block{block}); err != nil {
 				t.Fatalf("failed to insert new mined block %d: %v", block.NumberU64(), err)
 			}
-		case <-time.After(20 * time.Second): // Worker needs 1s to include new changes.
+		case <-time.After(3 * time.Second): // Worker needs 1s to include new changes.
 			t.Fatalf("timeout")
 		}
 	}
