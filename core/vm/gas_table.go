@@ -499,7 +499,6 @@ func gasCallCode(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memory
 		gas      uint64
 		overflow bool
 	)
-
 	if stack.Back(2).Sign() != 0 {
 		gas += params.CallValueTransferGas
 	}
