@@ -48,6 +48,16 @@ func NewAccessWitness() *AccessWitness {
 
 // TODO TouchAndCharge + SetLeafValue* does redundant calls to GetTreeKey*
 
+func (aw *AccessWitness) TouchAndChargeProofOfAbsence(addr []byte) uint64 {
+	var gas uint64
+	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyVersion(addr[:]), nil)
+	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyBalance(addr[:]), nil)
+	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyCodeSize(addr[:]), nil)
+	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyCodeKeccak(addr[:]), nil)
+	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyNonce(addr[:]), nil)
+	return gas
+}
+
 func (aw *AccessWitness) TouchAndChargeMessageCall(addr []byte) uint64 {
 	var gas uint64
 	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyVersion(addr[:]), nil)
