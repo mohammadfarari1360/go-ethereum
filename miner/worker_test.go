@@ -17,6 +17,7 @@
 package miner
 
 import (
+	"fmt"
 	"math/big"
 	"math/rand"
 	"sync/atomic"
@@ -293,9 +294,9 @@ func TestGenerateBlocksAndImportVerkle(t *testing.T) {
 
 	// Ignore empty commit here for less noise.
 	/*
-	w.skipSealHook = func(task *task) bool {
-		return len(task.receipts) == 0
-	}
+		w.skipSealHook = func(task *task) bool {
+			return len(task.receipts) == 0
+		}
 	*/
 
 	// Wait for mined blocks.
@@ -307,26 +308,27 @@ func TestGenerateBlocksAndImportVerkle(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		/*
-		// TODO this causes a failure, but shouldn't.  investigate.
-		b.txPool.AddLocal(b.newRandomTx(true))
-		b.txPool.AddLocal(b.newRandomTx(false))
-		w.postSideBlock(core.ChainSideEvent{Block: b.newRandomUncle()})
-		w.postSideBlock(core.ChainSideEvent{Block: b.newRandomUncle()})
+			// TODO this causes a failure, but shouldn't.  investigate.
+			b.txPool.AddLocal(b.newRandomTx(true))
+			b.txPool.AddLocal(b.newRandomTx(false))
+			w.postSideBlock(core.ChainSideEvent{Block: b.newRandomUncle()})
+			w.postSideBlock(core.ChainSideEvent{Block: b.newRandomUncle()})
 		*/
 
 		select {
 		case ev := <-sub.Chan():
 			block := ev.Data.(core.NewMinedBlockEvent).Block
-			if block.Header().VerkleProof == nil {
-				t.Fatalf("expected Verkle proof in mined block header")
-			}
 			/*
+				if block.Header().VerkleProof == nil {
+					t.Fatalf("expected Verkle proof in mined block header")
+				}
+			*/
 			// TODO this produces invalid merkle roots when attempting to insert.
 			// investigate.
 			if _, err := chain.InsertChain([]*types.Block{block}); err != nil {
 				t.Fatalf("failed to insert new mined block %d: %v", block.NumberU64(), err)
 			}
-			*/
+			fmt.Printf("imported %s-%x/%s\n", block.Number().String(), block.Header().Root, block.Hash().Hex())
 		case <-time.After(3 * time.Second): // Worker needs 1s to include new changes.
 			t.Fatalf("timeout")
 		}

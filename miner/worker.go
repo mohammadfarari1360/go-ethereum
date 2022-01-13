@@ -19,6 +19,7 @@ package miner
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -658,12 +659,21 @@ func (w *worker) resultLoop() {
 				}
 				logs = append(logs, receipt.Logs...)
 			}
+			//fmt.Printf("miner/worker mined block: %s-%x/%s, parent hash: %s\n", block.Number(), block.Header().Root, block.Hash().Hex(), block.ParentHash().Hex())
+			fmt.Printf("foobarbazbat - coinbase=%s\n", task.state.GetBalance(block.Coinbase()))
 			// Commit block and state to database.
 			_, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
 			if err != nil {
 				log.Error("Failed writing block to chain", "err", err)
 				continue
 			}
+			s2, err := w.chain.StateAt(block.Root())
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Printf("chain coinbase - %s\n", s2.GetBalance(block.Coinbase()))
+
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 
@@ -910,6 +920,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 
 	tstart := time.Now()
 	parent := w.chain.CurrentBlock()
+	fmt.Printf("commitNewWork, parent hash - %s\n", parent.Hash().Hex())
 
 	if parent.Time() >= uint64(timestamp) {
 		timestamp = int64(parent.Time() + 1)
@@ -1039,15 +1050,18 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	if err != nil {
 		return err
 	}
-	if tr := s.GetTrie(); tr.IsVerkle() {
-		vtr := tr.(*trie.VerkleTrie)
-		// Generate the proof if we are using a verkle tree
-		p, err := vtr.ProveAndSerialize(s.Witness().Keys(), s.Witness().KeyVals())
-		if err != nil {
-			return err
+	fmt.Printf("block %s/%s - %s\n", block.Number(), block.ParentHash().Hex(), w.current.state.GetBalance(block.Coinbase()).String())
+	/*
+		if tr := s.GetTrie(); tr.IsVerkle() {
+			vtr := tr.(*trie.VerkleTrie)
+			// Generate the proof if we are using a verkle tree
+			p, err := vtr.ProveAndSerialize(s.Witness().Keys(), s.Witness().KeyVals())
+			if err != nil {
+				return err
+			}
+			block.SetVerkleProof(p)
 		}
-		block.SetVerkleProof(p)
-	}
+	*/
 	if w.isRunning() && !w.merger.TDDReached() {
 		if interval != nil {
 			interval()

@@ -19,9 +19,9 @@ package vm
 import (
 	"errors"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 )
@@ -350,12 +350,12 @@ func pureMemoryGascost(evm *EVM, contract *Contract, stack *Stack, mem *Memory, 
 }
 
 var (
-	gasReturn  = pureMemoryGascost
-	gasRevert  = pureMemoryGascost
-	gasMLoad   = pureMemoryGascost
-	gasMStore8 = pureMemoryGascost
-	gasMStore  = pureMemoryGascost
-	statefulGasCreate  = pureMemoryGascost
+	gasReturn         = pureMemoryGascost
+	gasRevert         = pureMemoryGascost
+	gasMLoad          = pureMemoryGascost
+	gasMStore8        = pureMemoryGascost
+	gasMStore         = pureMemoryGascost
+	statefulGasCreate = pureMemoryGascost
 )
 
 func gasCreate(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
@@ -444,7 +444,6 @@ func gasCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize
 		transfersValue = !stack.Back(2).IsZero()
 		address        = common.Address(stack.Back(1).Bytes20())
 	)
-
 
 	if evm.chainRules.IsEIP158 {
 		if transfersValue && evm.StateDB.Empty(address) {

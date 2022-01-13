@@ -17,10 +17,10 @@
 package core
 
 import (
-	"math"
-	"math/big"
 	"encoding/binary"
 	"fmt"
+	"math"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
@@ -264,13 +264,13 @@ func (st *StateTransition) preCheck() error {
 // if subtracting more gas than remains in gasPool, set gasPool = 0 and return false
 // otherwise, do the subtraction setting the result in gasPool and return true
 func tryConsumeGas(gasPool *uint64, gas uint64) bool {
-        if *gasPool < gas {
-                *gasPool = 0
-                return false
-        }
+	if *gasPool < gas {
+		*gasPool = 0
+		return false
+	}
 
-        *gasPool -= gas
-        return true
+	*gasPool -= gas
+	return true
 }
 
 // TransitionDb will transition the state by applying the current message and
@@ -339,9 +339,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 			targetNonce = st.evm.StateDB.GetNonceLittleEndian(*targetAddr)
 			targetCodeKeccak = st.evm.StateDB.GetCodeHash(*targetAddr).Bytes()
 
-                        codeSize := uint64(st.evm.StateDB.GetCodeSize(*targetAddr))
-                        var codeSizeBytes [32]byte
-                        binary.LittleEndian.PutUint64(codeSizeBytes[:8], codeSize)
+			codeSize := uint64(st.evm.StateDB.GetCodeSize(*targetAddr))
+			var codeSizeBytes [32]byte
+			binary.LittleEndian.PutUint64(codeSizeBytes[:8], codeSize)
 			st.evm.Accesses.SetTxExistingTouchedLeaves(targetAddr.Bytes(), targetBalance, targetNonce, targetCodeSize, targetCodeKeccak)
 		}
 	}
