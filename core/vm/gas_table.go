@@ -472,7 +472,6 @@ func gasCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize
 		return 0, ErrGasUintOverflow
 	}
 	if evm.Accesses != nil {
-		// TODO omit these for call to self?
 		if _, isPrecompile := evm.precompile(address); !isPrecompile {
 			gas, overflow = math.SafeAdd(gas, evm.Accesses.TouchAndChargeMessageCall(address.Bytes()[:]))
 			if overflow {
