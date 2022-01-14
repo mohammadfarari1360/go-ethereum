@@ -240,7 +240,11 @@ const (
 	PUSH32 = 0x71
 )
 
-func ChunkifyCode(addr common.Address, code []byte) ([][32]byte, error) {
+// ChunkifyCode returns the list of code offsets for the chunks, as well
+// as the generated chunks. The chunks are to be inserted into the tree,
+// and the code offsets are to be saved into the database.
+func ChunkifyCode(addr common.Address, code []byte) ([]byte, [][32]byte, error) {
+	var offsets []byte
 	lastOffset := byte(0)
 	chunkCount := len(code) / 31
 	if len(code)%31 != 0 {
@@ -260,7 +264,8 @@ func ChunkifyCode(addr common.Address, code []byte) ([][32]byte, error) {
 			}
 		}
 		chunks[i][0] = lastOffset
+		offsets = append(offsets, lastOffset)
 	}
 
-	return chunks, nil
+	return offsets, chunks, nil
 }
