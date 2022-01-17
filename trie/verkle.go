@@ -206,7 +206,7 @@ func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[common.Hash][]by
 			Value: val,
 		})
 	}
-	return rlp.EncodeToBytes(vp)
+	return verkle.SerializeProof(proof) //rlp.EncodeToBytes(vp)
 }
 
 func DeserializeAndVerifyVerkleProof(serialized []byte) (map[common.Hash]common.Hash, error) {
