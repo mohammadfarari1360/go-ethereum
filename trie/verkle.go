@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 )
@@ -180,16 +179,6 @@ type KeyValuePair struct {
 	Value []byte
 }
 
-type verkleproof struct {
-	Proof *verkle.Proof
-
-	Cis     []*verkle.Point
-	Indices []byte
-	Yis     []*verkle.Fr
-
-	Leaves []KeyValuePair
-}
-
 func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[common.Hash][]byte) ([]byte, error) {
 	proof, _, _, _ := verkle.MakeVerkleMultiProof(trie.root, keys)
 	return verkle.SerializeProof(proof)
@@ -207,17 +196,77 @@ func DeserializeAndVerifyVerkleProof(serialized []byte) (map[common.Hash]common.
 	return leaves, nil
 }
 
-func deserializeVerkleProof(proof []byte) (*verkle.Proof, []*verkle.Point, []byte, []*verkle.Fr, map[common.Hash]common.Hash, error) {
-	var vp verkleproof
-	err := rlp.DecodeBytes(proof, &vp)
+func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, []byte, []*verkle.Fr, map[common.Hash]common.Hash, error) {
+	proof, err := verkle.DeserializeProof(serialized)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("verkle proof deserialization error: %w", err)
 	}
-	leaves := make(map[common.Hash]common.Hash, len(vp.Leaves))
-	for _, kvp := range vp.Leaves {
-		leaves[common.BytesToHash(kvp.Key)] = common.BytesToHash(kvp.Value)
+
+	others := make(map[common.Hash]struct{})
+	for _, stem := range proof.poaStems {
+		others[stem] = struct{}{}
 	}
-	return vp.Proof, vp.Cis, vp.Indices, vp.Yis, leaves, nil
+
+	var keys [][]byte
+	var vals [][]byte
+	var keyvals map[common.Hash]common.Hash
+	// NOTE the current proof format for verkle trees doesn't include the leaves,
+	// this needs to be sorted out during the next call.
+	//leaves := make(map[common.Hash]common.Hash, len(vp.Leaves))
+	//for _, kvp := range vp.Leaves {
+	//leaves[common.BytesToHash(kvp.Key)] = common.BytesToHash(kvp.Value)
+	//}
+
+	if len(keys) != len(vals) {
+		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(keys), len(vals))
+	}
+	if len(keys) != len(proof.extStatus) {
+		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(keys), len(vals))
+	}
+
+	var indices []byte
+	var yis []byte
+
+	// Rebuild the tree, creating nodes in the lexicographic order of their path
+	lastcomm, lastpoa := 0, 0
+	root := &verkle.StatelessNode{}
+	for i, es := range proof.extStatus {
+		depth := es & 0x1F
+		status := es >> 5
+		node := root
+		for j := 0; j < depth; j++ {
+			// Recurse into the tree that is being rebuilt
+			if node.children[keys[i][j]] == nil {
+node.children[keys[i][j]] = &verkle.StatelessNode{
+	children: map[byte]*verkle.StatelessNode,
+	commitment: proof.commitments[lastcomm++],
+	count: 0,
+}
+			}
+
+			node = node.children[keys[i][j]]
+		}
+
+		// Reached the end, add the extension-and-suffix tree
+		switch status {
+		case 0:
+			// missing stem, leave it as is
+			break
+		case 1:
+			// another stem is found, build it
+			node.stem = proof.poaStems[lastpoa++]
+			break
+		case 2:
+			// stem is present
+			node.stem = key[:31]
+			break
+		}
+
+		indices = append(indices, keys[i][j])
+		yis = append(yis, node.children[i][j].commitment)
+	}
+
+	return proof.multipoint, proof.commitments, indices, yis, keyvals, nil
 }
 
 // Copy the values here so as to avoid an import cycle
