@@ -351,36 +351,13 @@ func pureMemoryGascost(evm *EVM, contract *Contract, stack *Stack, mem *Memory, 
 }
 
 var (
-	gasReturn         = pureMemoryGascost
-	gasRevert         = pureMemoryGascost
-	gasMLoad          = pureMemoryGascost
-	gasMStore8        = pureMemoryGascost
-	gasMStore         = pureMemoryGascost
-	statefulGasCreate = pureMemoryGascost
+	gasReturn  = pureMemoryGascost
+	gasRevert  = pureMemoryGascost
+	gasMLoad   = pureMemoryGascost
+	gasMStore8 = pureMemoryGascost
+	gasMStore  = pureMemoryGascost
+	gasCreate  = pureMemoryGascost
 )
-
-func gasCreate(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
-	var gasUsed uint64
-	if gasUsed, err := statefulGasCreate(evm, contract, stack, mem, memorySize); err != nil {
-		return gasUsed, err
-	}
-
-	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
-		var overflow bool
-		statelessGas := evm.Accesses.TouchAndChargeContractCreateInit(contract.Address().Bytes()[:])
-		if gasUsed, overflow = math.SafeAdd(gasUsed, statelessGas); overflow {
-			return 0, ErrGasUintOverflow
-		}
-		if stack.Back(0).Sign() != 0 {
-			valueTransferGas := evm.Accesses.TouchAddressAndChargeGas(contract.Address().Bytes()[:], nil)
-			if gasUsed, overflow = math.SafeAdd(gasUsed, valueTransferGas); overflow {
-				return 0, ErrGasUintOverflow
-			}
-		}
-	}
-
-	return gasUsed, nil
-}
 
 func gasCreate2(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
 	gas, err := memoryGasCost(mem, memorySize)
@@ -396,19 +373,6 @@ func gasCreate2(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memoryS
 	}
 	if gas, overflow = math.SafeAdd(gas, wordGas); overflow {
 		return 0, ErrGasUintOverflow
-	}
-	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
-		var overflow bool
-		statelessGas := evm.Accesses.TouchAndChargeContractCreateInit(contract.Address().Bytes()[:])
-		if gas, overflow = math.SafeAdd(gas, statelessGas); overflow {
-			return 0, ErrGasUintOverflow
-		}
-		if stack.Back(0).Sign() != 0 {
-			valueTransferGas := evm.Accesses.TouchAddressAndChargeGas(contract.Address().Bytes()[:], nil)
-			if gas, overflow = math.SafeAdd(gas, valueTransferGas); overflow {
-				return 0, ErrGasUintOverflow
-			}
-		}
 	}
 	return gas, nil
 }
