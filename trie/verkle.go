@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/crate-crypto/go-ipa"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -222,12 +223,13 @@ func DeserializeAndVerifyVerkleProof(serialized []byte) (map[common.Hash]common.
 	return leaves, nil
 }
 
-func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, []byte, []*verkle.Fr, map[common.Hash]common.Hash, error) {
+func deserializeVerkleProof(serialized []byte) (*multiproof.MultiProof, []*verkle.Point, []byte, []*verkle.Fr, map[common.Hash]common.Hash, error) {
 	var (
 		keys, vals        [][]byte     // List of (key, value) pairs touched by the proof
 		indices           []byte       // List of zis
 		yis               []*verkle.Fr // List of yis
 		seenIdx, seenComm set          // Mark when a zi/yi has already been seen in deserialization
+		others            set          // Mark when an "other" stem has been seen
 	)
 
 	proof, err := verkle.DeserializeProof(serialized)
@@ -235,9 +237,8 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 		return nil, nil, nil, nil, nil, fmt.Errorf("verkle proof deserialization error: %w", err)
 	}
 
-	others := make(map[common.Hash]struct{})
-	for _, stem := range proof.poaStems {
-		others[stem] = struct{}{}
+	for _, stem := range proof.PoaStems {
+		others.addKey(stem)
 	}
 
 	var keyvals map[common.Hash]common.Hash
@@ -251,28 +252,28 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 	if len(keys) != len(vals) {
 		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(keys), len(vals))
 	}
-	if len(keys) != len(proof.extStatus) {
+	if len(keys) != len(proof.ExtStatus) {
 		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(keys), len(vals))
 	}
 
 	// Rebuild the tree, creating nodes in the lexicographic order of their path
 	lastcomm, lastpoa := 0, 0
-	root := &verkle.NewStateless()
-	for i, es := range proof.extStatus {
+	root := verkle.NewStateless()
+	for i, es := range proof.ExtStatus {
 		depth := es & 0x1F
 		status := es >> 5
 		node := root
 		stem := keys[i]
 
 		// go over the stem's bytes, in order to rebuild the internal nodes
-		for j := 0; j < depth; j++ {
+		for j := byte(0); j < depth; j++ {
 			// Recurse into the tree that is being rebuilt
 			if node.Children()[stem[j]] == nil {
-				node.SetChild(stem[j], verkle.NewDeserializedStateless(proof.commitment[lastcomm]))
+				node.SetChild(int(stem[j]), verkle.NewDeserializedStateless(proof.Cs[lastcomm]))
 				lastcomm++
 			}
 
-			node = node.Children()[stem[j]]
+			node = node.Children()[stem[j]].(*verkle.StatelessNode)
 
 			// if that zi hasn't been encountered yet, add it to
 			// the list of zis sorted by path.
@@ -284,7 +285,7 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 			// same thing with a yi
 			if !seenComm.hasKey(stem[:j]) {
 				seenComm.addKey(stem[:j])
-				yis = append(yis, node.commitment)
+				yis = append(yis, node.ComputeCommitment())
 			}
 		}
 
@@ -295,12 +296,12 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 			break
 		case 1:
 			// another stem is found, build it
-			node.stem = proof.poaStems[lastpoa]
+			node.SetStem(proof.PoaStems[lastpoa])
 			lastpoa++
 			break
 		case 2:
 			// stem is present
-			node.stem = stem[:31]
+			node.SetStem(stem[:31])
 			break
 		default:
 			return nil, nil, nil, nil, nil, fmt.Errorf("verkle proof deserialization error: invalid extension status %d", status)
@@ -308,7 +309,7 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 
 	}
 
-	return proof.multipoint, proof.commitments, indices, yis, keyvals, nil
+	return proof.Multipoint, proof.Cs, indices, yis, keyvals, nil
 }
 
 // Copy the values here so as to avoid an import cycle
