@@ -220,7 +220,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 		evm.StateDB.CreateAccount(addr)
 	}
-	if evm.Accesses != nil && value.Sign() != 0 {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) && value.Sign() != 0 {
 		callerBalanceBefore := evm.StateDB.GetBalanceLittleEndian(caller.Address())
 		targetBalanceBefore := evm.StateDB.GetBalanceLittleEndian(addr)
 		evm.Accesses.SetLeafValuesValueTransfer(caller.Address().Bytes()[:], addr[:], callerBalanceBefore, targetBalanceBefore)
@@ -572,7 +572,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 		}
 	}
 
-	if err == nil && evm.Accesses != nil {
+	if err == nil && evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		if !contract.UseGas(evm.Accesses.TouchAndChargeContractCreateCompleted(address.Bytes()[:], value.Sign() != 0)) {
 			evm.StateDB.RevertToSnapshot(snapshot)
 			err = ErrOutOfGas
