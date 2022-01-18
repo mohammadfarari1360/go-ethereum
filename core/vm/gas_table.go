@@ -365,7 +365,7 @@ func gasCreate(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySi
 		return gasUsed, err
 	}
 
-if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		var overflow bool
 		statelessGas := evm.Accesses.TouchAndChargeContractCreateInit(contract.Address().Bytes()[:])
 		if gasUsed, overflow = math.SafeAdd(gasUsed, statelessGas); overflow {
@@ -397,7 +397,7 @@ func gasCreate2(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memoryS
 	if gas, overflow = math.SafeAdd(gas, wordGas); overflow {
 		return 0, ErrGasUintOverflow
 	}
-if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		var overflow bool
 		statelessGas := evm.Accesses.TouchAndChargeContractCreateInit(contract.Address().Bytes()[:])
 		if gas, overflow = math.SafeAdd(gas, statelessGas); overflow {
@@ -472,7 +472,7 @@ func gasCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize
 	if gas, overflow = math.SafeAdd(gas, evm.callGasTemp); overflow {
 		return 0, ErrGasUintOverflow
 	}
-if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		if _, isPrecompile := evm.precompile(address); !isPrecompile {
 			gas, overflow = math.SafeAdd(gas, evm.Accesses.TouchAndChargeMessageCall(address.Bytes()[:]))
 			if overflow {
@@ -512,7 +512,7 @@ func gasCallCode(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memory
 	if gas, overflow = math.SafeAdd(gas, evm.callGasTemp); overflow {
 		return 0, ErrGasUintOverflow
 	}
-if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		address := common.Address(stack.Back(1).Bytes20())
 		if _, isPrecompile := evm.precompile(address); !isPrecompile {
 			gas, overflow = math.SafeAdd(gas, evm.Accesses.TouchAndChargeMessageCall(address.Bytes()))
@@ -537,7 +537,7 @@ func gasDelegateCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, me
 	if gas, overflow = math.SafeAdd(gas, evm.callGasTemp); overflow {
 		return 0, ErrGasUintOverflow
 	}
-if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		address := common.Address(stack.Back(1).Bytes20())
 		if _, isPrecompile := evm.precompile(address); !isPrecompile {
 			gas, overflow = math.SafeAdd(gas, evm.Accesses.TouchAndChargeMessageCall(address.Bytes()))
@@ -562,7 +562,7 @@ func gasStaticCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memo
 	if gas, overflow = math.SafeAdd(gas, evm.callGasTemp); overflow {
 		return 0, ErrGasUintOverflow
 	}
-if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		address := common.Address(stack.Back(1).Bytes20())
 		if _, isPrecompile := evm.precompile(address); !isPrecompile {
 			gas, overflow = math.SafeAdd(gas, evm.Accesses.TouchAndChargeMessageCall(address.Bytes()))
@@ -591,7 +591,7 @@ func gasSelfdestruct(evm *EVM, contract *Contract, stack *Stack, mem *Memory, me
 		}
 	}
 
-if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		// TODO turn this into a panic (when we are sure this method
 		// will never execute when verkle is enabled)
 		log.Warn("verkle witness accumulation not supported for selfdestruct")
