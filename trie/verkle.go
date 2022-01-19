@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/crate-crypto/go-ipa"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -185,9 +184,10 @@ func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[common.Hash][]by
 	return verkle.SerializeProof(proof)
 }
 
-// Golang being the braindead language that it is, I find myself again having to
-// reimplement a basic primitive, this time a Set with stems of variable length.
-// A productive language indeed! 🤦
+// Golang being the braindead language that it is, I find myself once again,
+// having to reimplement a basic primitive, this time the Set with keys of
+// variable lengths. A productive language indeed! 🤦
+// Why not use deckarep/golang-set? https://go.dev/play/p/euqlGXq8VdR, that's why.
 type set struct {
 	keys map[common.Hash]struct{}
 }
@@ -223,7 +223,7 @@ func DeserializeAndVerifyVerkleProof(serialized []byte) (map[common.Hash]common.
 	return leaves, nil
 }
 
-func deserializeVerkleProof(serialized []byte) (*multiproof.MultiProof, []*verkle.Point, []byte, []*verkle.Fr, map[common.Hash]common.Hash, error) {
+func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, []byte, []*verkle.Fr, map[common.Hash]common.Hash, error) {
 	var (
 		keys, vals        [][]byte     // List of (key, value) pairs touched by the proof
 		indices           []byte       // List of zis
@@ -269,7 +269,7 @@ func deserializeVerkleProof(serialized []byte) (*multiproof.MultiProof, []*verkl
 		for j := byte(0); j < depth; j++ {
 			// Recurse into the tree that is being rebuilt
 			if node.Children()[stem[j]] == nil {
-				node.SetChild(int(stem[j]), verkle.NewDeserializedStateless(proof.Cs[lastcomm]))
+				node.SetChild(int(stem[j]), verkle.NewStatelessWithCommitment(proof.Cs[lastcomm]))
 				lastcomm++
 			}
 
@@ -309,7 +309,7 @@ func deserializeVerkleProof(serialized []byte) (*multiproof.MultiProof, []*verkl
 
 	}
 
-	return proof.Multipoint, proof.Cs, indices, yis, keyvals, nil
+	return proof, proof.Cs, indices, yis, keyvals, nil
 }
 
 // Copy the values here so as to avoid an import cycle
