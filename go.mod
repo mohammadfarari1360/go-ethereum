@@ -2,6 +2,8 @@ module github.com/ethereum/go-ethereum
 
 go 1.15
 
+replace github.com/gballet/go-verkle => github.com/gballet/go-verkle v0.0.0-20220119102938-379d70afb801
+
 require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/Azure/azure-storage-blob-go v0.7.0
