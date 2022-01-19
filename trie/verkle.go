@@ -184,31 +184,15 @@ func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[common.Hash][]by
 	return verkle.SerializeProof(proof)
 }
 
-// Golang being the braindead language that it is, I find myself once again,
-// having to reimplement a basic primitive, this time the Set with keys of
-// variable lengths. A productive language indeed! 🤦
-// Why not use deckarep/golang-set? https://go.dev/play/p/euqlGXq8VdR, that's why.
-type set struct {
-	keys map[common.Hash]struct{}
-}
+type set = map[string]struct{}
 
-func (s *set) getSelector(key []byte) common.Hash {
-	if len(key) > 31 {
-		panic("key length overflow")
-	}
-	var k common.Hash
-	copy(k[:len(key)], key)
-	k[31] = byte(len(key))
-	return k
-}
-
-func (s *set) hasKey(key []byte) bool {
-	_, ok := s.keys[s.getSelector(key)]
+func hasKey(s set, key []byte) bool {
+	_, ok := s[string(key)]
 	return ok
 }
 
-func (s *set) addKey(key []byte) {
-	s.keys[s.getSelector(key)] = struct{}{}
+func addKey(s set, key []byte) {
+	s[string(key)] = struct{}{}
 }
 
 func DeserializeAndVerifyVerkleProof(serialized []byte) (map[common.Hash]common.Hash, error) {
@@ -238,7 +222,7 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 	}
 
 	for _, stem := range proof.PoaStems {
-		others.addKey(stem)
+		addKey(others, stem)
 	}
 
 	var keyvals map[common.Hash]common.Hash
@@ -277,14 +261,14 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 
 			// if that zi hasn't been encountered yet, add it to
 			// the list of zis sorted by path.
-			if !seenIdx.hasKey(stem[:j]) {
-				seenIdx.addKey(stem[:j])
+			if !hasKey(seenIdx, stem[:j]) {
+				addKey(seenIdx, stem[:j])
 				indices = append(indices, stem[j])
 			}
 
 			// same thing with a yi
-			if !seenComm.hasKey(stem[:j]) {
-				seenComm.addKey(stem[:j])
+			if !hasKey(seenComm, stem[:j]) {
+				addKey(seenComm, stem[:j])
 				yis = append(yis, node.ComputeCommitment())
 			}
 		}
