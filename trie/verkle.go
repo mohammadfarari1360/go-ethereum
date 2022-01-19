@@ -209,7 +209,6 @@ func DeserializeAndVerifyVerkleProof(serialized []byte) (map[common.Hash]common.
 
 func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, []byte, []*verkle.Fr, map[common.Hash]common.Hash, error) {
 	var (
-		keys, vals        [][]byte     // List of (key, value) pairs touched by the proof
 		indices           []byte       // List of zis
 		yis               []*verkle.Fr // List of yis
 		seenIdx, seenComm set          // Mark when a zi/yi has already been seen in deserialization
@@ -225,19 +224,16 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 		addKey(others, stem)
 	}
 
-	var keyvals map[common.Hash]common.Hash
-	// NOTE the current proof format for verkle trees doesn't include the leaves,
-	// this needs to be sorted out during the next call.
-	//leaves := make(map[common.Hash]common.Hash, len(vp.Leaves))
-	//for _, kvp := range vp.Leaves {
-	//leaves[common.BytesToHash(kvp.Key)] = common.BytesToHash(kvp.Value)
-	//}
-
-	if len(keys) != len(vals) {
-		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(keys), len(vals))
+	keyvals := make(map[common.Hash]common.Hash)
+	for i, key := range proof.Keys {
+		keyvals[common.BytesToHash(key)] = common.BytesToHash(proof.Values[i])
 	}
-	if len(keys) != len(proof.ExtStatus) {
-		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(keys), len(vals))
+
+	if len(proof.Keys) != len(proof.Values) {
+		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(proof.Keys), len(proof.Values))
+	}
+	if len(proof.Keys) != len(proof.ExtStatus) {
+		return nil, nil, nil, nil, nil, fmt.Errorf("keys and values are of different length %d != %d", len(proof.Keys), len(proof.Values))
 	}
 
 	// Rebuild the tree, creating nodes in the lexicographic order of their path
@@ -247,7 +243,7 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 		depth := es & 0x1F
 		status := es >> 5
 		node := root
-		stem := keys[i]
+		stem := proof.Keys[i]
 
 		// go over the stem's bytes, in order to rebuild the internal nodes
 		for j := byte(0); j < depth; j++ {
