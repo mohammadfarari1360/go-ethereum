@@ -2,8 +2,6 @@ module github.com/ethereum/go-ethereum
 
 go 1.15
 
-replace github.com/gballet/go-verkle => github.com/gballet/go-verkle v0.0.0-20220119102938-379d70afb801
-
 require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/Azure/azure-storage-blob-go v0.7.0
@@ -28,7 +26,7 @@ require (
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
 	github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
-	github.com/gballet/go-verkle v0.0.0-20220118095937-7f86b3f3c890
+	github.com/gballet/go-verkle v0.0.0-20220119112812-69e1c35fb0e0
 	github.com/go-ole/go-ole v1.2.1 // indirect
 	github.com/go-stack/stack v1.8.0
 	github.com/golang/protobuf v1.4.3
