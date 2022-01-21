@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie/utils"
 )
 
 type VerkleStem [31]byte
@@ -28,7 +29,7 @@ type VerkleStem [31]byte
 type Mode byte
 
 type ChunkValue struct {
-	mode Mode
+	mode  Mode
 	value []byte
 }
 
@@ -48,13 +49,13 @@ type AccessWitness struct {
 
 func NewAccessWitness() *AccessWitness {
 	return &AccessWitness{
-		Branches:  make(map[VerkleStem]byte),
-		Chunks:    make(map[common.Hash]ChunkValue),
+		Branches: make(map[VerkleStem]byte),
+		Chunks:   make(map[common.Hash]ChunkValue),
 	}
 }
 
 const (
-	AccessWitnessReadFlag = 1
+	AccessWitnessReadFlag  = 1
 	AccessWitnessWriteFlag = 2
 )
 
@@ -74,12 +75,12 @@ func (aw *AccessWitness) SetLeafValue(addr []byte, value []byte) {
 }
 
 func (aw *AccessWitness) touchAddressOnWrite(addr []byte) (bool, bool, bool) {
-	var stem        VerkleStem
+	var stem VerkleStem
 	var stemWrite, chunkWrite, chunkFill bool
 	copy(stem[:], addr[:31])
 
 	// NOTE: stem, selector access flags already exist in their
-	// respective maps because this function is called at the end of 
+	// respective maps because this function is called at the end of
 	// processing a read access event
 
 	if (aw.Branches[stem] & AccessWitnessWriteFlag) == 0 {
@@ -88,7 +89,7 @@ func (aw *AccessWitness) touchAddressOnWrite(addr []byte) (bool, bool, bool) {
 	}
 
 	chunkValue := aw.Chunks[common.BytesToHash(addr)]
-	if chunkValue.mode & AccessWitnessWriteFlag != 0 {
+	if chunkValue.mode&AccessWitnessWriteFlag != 0 {
 		chunkWrite = true
 		chunkValue.mode |= AccessWitnessWriteFlag
 		aw.Chunks[common.BytesToHash(addr)] = chunkValue
@@ -96,11 +97,11 @@ func (aw *AccessWitness) touchAddressOnWrite(addr []byte) (bool, bool, bool) {
 
 	// TODO charge chunk filling costs if the leaf was previously empty in the state
 	/*
-	if chunkWrite {
-		if _, err := verkleDb.TryGet(addr); err != nil {
-			chunkFill = true
+		if chunkWrite {
+			if _, err := verkleDb.TryGet(addr); err != nil {
+				chunkFill = true
+			}
 		}
-	}
 	*/
 
 	return stemWrite, chunkWrite, chunkFill
@@ -110,8 +111,8 @@ func (aw *AccessWitness) touchAddressOnWrite(addr []byte) (bool, bool, bool) {
 // true if the stem or the stub weren't arleady present.
 func (aw *AccessWitness) touchAddress(addr []byte, isWrite bool) (bool, bool, bool, bool, bool) {
 	var (
-		stem        [31]byte
-		stemRead bool
+		stem         [31]byte
+		stemRead     bool
 		selectorRead bool
 	)
 	copy(stem[:], addr[:31])
@@ -213,8 +214,8 @@ func (aw *AccessWitness) KeyVals() map[common.Hash][]byte {
 
 func (aw *AccessWitness) Copy() *AccessWitness {
 	naw := &AccessWitness{
-		Branches:  make(map[VerkleStem]byte),
-		Chunks:    make(map[common.Hash]ChunkValue),
+		Branches: make(map[VerkleStem]byte),
+		Chunks:   make(map[common.Hash]ChunkValue),
 	}
 
 	naw.Merge(aw)
@@ -236,8 +237,8 @@ func (aw *AccessWitness) TouchAndChargeProofOfAbsence(addr []byte) uint64 {
 
 func (aw *AccessWitness) TouchAndChargeMessageCall(addr []byte) uint64 {
 	var gas uint64
-	gas += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyVersion(addr[:]), nil)
-	gas += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyCodeSize(addr[:]), nil)
+	gas += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyVersion(addr[:]))
+	gas += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyCodeSize(addr[:]))
 	return gas
 }
 
@@ -273,8 +274,8 @@ func (aw *AccessWitness) TouchAndChargeContractCreateInit(addr []byte, createSen
 
 func (aw *AccessWitness) SetLeafValuesContractCreateInit(addr, nonce, value []byte) {
 	var version [32]byte
-	aw.TouchAddress(utils.GetTreeKeyVersion(addr[:]), version[:])
-	aw.TouchAddress(utils.GetTreeKeyNonce(addr[:]), nonce)
+	aw.SetLeafValue(utils.GetTreeKeyVersion(addr[:]), version[:])
+	aw.SetLeafValue(utils.GetTreeKeyNonce(addr[:]), nonce)
 	if value != nil {
 		aw.SetLeafValue(utils.GetTreeKeyBalance(addr[:]), value)
 	}
@@ -300,13 +301,12 @@ func (aw *AccessWitness) SetLeafValuesContractCreateCompleted(addr, codeSize, co
 
 func (aw *AccessWitness) TouchTxOriginAndChargeGas(originAddr []byte, sendsValue bool) uint64 {
 	var gasUsed uint64
-	var version [32]byte
-	gasUsed += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyVersion(originAddr[:]), version[:])
-	gasUsed += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyBalance(originAddr[:]), nil)
-	gasUsed += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyNonce(originAddr[:]), nil)
+	gasUsed += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyVersion(originAddr[:]))
+	gasUsed += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyBalance(originAddr[:]))
+	gasUsed += aw.TouchAddressOnReadAndChargeGas(utils.GetTreeKeyNonce(originAddr[:]))
 
 	if sendsValue {
-		gasUsed += aw.TouchAddressOnWriteAndChargeGas(utils.GetTreeKeyBalance(originAddr[:]), nil)
+		gasUsed += aw.TouchAddressOnWriteAndChargeGas(utils.GetTreeKeyBalance(originAddr[:]))
 	}
 	return gasUsed
 }
@@ -325,16 +325,18 @@ func (aw *AccessWitness) TouchTxExistingAndChargeGas(targetAddr []byte, sendsVal
 	return gasUsed
 }
 
-func (aw *AccessWitness) SetTxTouchedLeaves(originAddr, originBalance, originNonce []byte) {
-	aw.TouchAddress(utils.GetTreeKeyBalance(originAddr[:]), originBalance)
-	aw.TouchAddress(utils.GetTreeKeyNonce(originAddr[:]), originNonce)
+func (aw *AccessWitness) SetTxOriginTouchedLeaves(originAddr, originBalance, originNonce []byte) {
+	var version [32]byte
+	aw.SetLeafValue(utils.GetTreeKeyVersion(originAddr[:]), version[:])
+	aw.SetLeafValue(utils.GetTreeKeyBalance(originAddr[:]), originBalance)
+	aw.SetLeafValue(utils.GetTreeKeyNonce(originAddr[:]), originNonce)
 }
 
 func (aw *AccessWitness) SetTxExistingTouchedLeaves(targetAddr, targetBalance, targetNonce, targetCodeSize, targetCodeHash []byte) {
 	var version [32]byte
-	aw.TouchAddress(utils.GetTreeKeyVersion(targetAddr[:]), version)
-	aw.TouchAddress(utils.GetTreeKeyBalance(targetAddr[:]), targetBalance)
-	aw.TouchAddress(utils.GetTreeKeyNonce(targetAddr[:]), targetNonce)
-	aw.TouchAddress(utils.GetTreeKeyCodeSize(targetAddr[:]), targetCodeSize)
-	aw.TouchAddress(utils.GetTreeKeyCodeKeccak(targetAddr[:]), targetCodeHash)
+	aw.SetLeafValue(utils.GetTreeKeyVersion(targetAddr[:]), version[:])
+	aw.SetLeafValue(utils.GetTreeKeyBalance(targetAddr[:]), targetBalance)
+	aw.SetLeafValue(utils.GetTreeKeyNonce(targetAddr[:]), targetNonce)
+	aw.SetLeafValue(utils.GetTreeKeyCodeSize(targetAddr[:]), targetCodeSize)
+	aw.SetLeafValue(utils.GetTreeKeyCodeKeccak(targetAddr[:]), targetCodeHash)
 }

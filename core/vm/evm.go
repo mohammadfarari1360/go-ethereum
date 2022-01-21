@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
 )
 
@@ -472,14 +471,13 @@ func (c *codeAndHash) Hash() common.Hash {
 // create creates a new contract using code as deployment code.
 func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64, value *big.Int, address common.Address, typ OpCode) ([]byte, common.Address, uint64, error) {
 	var zeroVerkleLeaf [32]byte
-	var zeroValue [32]byte
 
 	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		// note: assumption is that the nonce, code size, code hash
 		// will be 0x0000...00 at the target account before it is created
 		// otherwise would imply contract creation collision which is
 		// impossible if self-destruct is removed
-		balance = evm.StateDB.GetBalanceLittleEndian(address)
+		balance := evm.StateDB.GetBalanceLittleEndian(address)
 
 		if value.Sign() != 0 {
 			evm.Accesses.SetLeafValuesContractCreateInit(address.Bytes()[:], zeroVerkleLeaf[:], nil)
@@ -517,7 +515,6 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if evm.chainRules.IsEIP158 {
 		evm.StateDB.SetNonce(address, 1)
 	}
-
 
 	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value)
 

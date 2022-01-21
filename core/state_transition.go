@@ -328,7 +328,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		}
 		originBalance = st.evm.StateDB.GetBalanceLittleEndian(originAddr)
 		originNonce = st.evm.StateDB.GetNonceLittleEndian(originAddr)
-		st.evm.Accesses.SetTxTouchedLeaves(originAddr.Bytes(), originBalance, originNonce)
+		st.evm.Accesses.SetTxOriginTouchedLeaves(originAddr.Bytes(), originBalance, originNonce)
 
 		if msg.To() != nil {
 			statelessGasDest := st.evm.Accesses.TouchTxExistingAndChargeGas(targetAddr.Bytes(), msg.Value().Sign() != 0)
