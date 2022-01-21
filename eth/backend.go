@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/crate-crypto/go-ipa/bandersnatch"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -143,7 +144,20 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Start the precomputation of Lagrange points
 	// if this config supports verkle trees.
 	if chainConfig.CancunBlock != nil {
-		log.Info("Detected the use of verkle trees, rebuilding the cache")
+		if precomp, err := chainDb.Get([]byte("precomp_lag")); err == nil {
+			pcl, err := bandersnatch.DeserializePrecomputedLagrange(precomp)
+			if err != nil {
+				log.Warn("Error while deserializing precomputed, fall back to generation", "error", err)
+			} else {
+				verkle.GetConfigWithPrecomputed(pcl)
+				if ser, err := pcl.SerializePrecomputedLagrange(); err != nil {
+					chainDb.Put([]byte("precomp_lag"), ser)
+				}
+			}
+		} else {
+			log.Info("Detected the use of verkle trees, rebuilding the cache")
+		}
+		// no-op if precomputation loading succeeded
 		verkle.GetConfig()
 	}
 
