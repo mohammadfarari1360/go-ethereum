@@ -16,7 +16,7 @@ require (
 	github.com/cespare/cp v0.1.0
 	github.com/cloudflare/cloudflare-go v0.14.0
 	github.com/consensys/gnark-crypto v0.4.1-0.20210426202927-39ac3d4b3f1f
-	github.com/crate-crypto/go-ipa v0.0.0-20220114181434-991b62f9b1da
+	github.com/crate-crypto/go-ipa v0.0.0-20220120174240-fe21866d2ad5
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v0.0.0-20180603214616-504e848d77ea
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
@@ -26,7 +26,7 @@ require (
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
 	github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
-	github.com/gballet/go-verkle v0.0.0-20220119205306-b466d7bff5ba
+	github.com/gballet/go-verkle v0.0.0-20220121105610-351986d619a8
 	github.com/go-ole/go-ole v1.2.1 // indirect
 	github.com/go-stack/stack v1.8.0
 	github.com/golang/protobuf v1.4.3
