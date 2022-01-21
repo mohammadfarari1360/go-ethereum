@@ -670,7 +670,7 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 	)
 	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
 		contractAddress := crypto.CreateAddress(scope.Contract.Address(), interpreter.evm.StateDB.GetNonce(scope.Contract.Address()))
-		statelessGas := interpreter.evm.Accesses.TouchAndChargeContractCreateInit(contractAddress.Bytes()[:])
+		statelessGas := interpreter.evm.Accesses.TouchAndChargeContractCreateInit(contractAddress.Bytes()[:], value.Sign() != 0)
 		if !tryConsumeGas(&gas, statelessGas) {
 			return nil, ErrExecutionReverted
 		}
@@ -720,7 +720,7 @@ func opCreate2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
 		codeAndHash := &codeAndHash{code: input}
 		contractAddress := crypto.CreateAddress2(scope.Contract.Address(), salt.Bytes32(), codeAndHash.Hash().Bytes())
-		statelessGas := interpreter.evm.Accesses.TouchAndChargeContractCreateInit(contractAddress.Bytes()[:])
+		statelessGas := interpreter.evm.Accesses.TouchAndChargeContractCreateInit(contractAddress.Bytes()[:], endowment.Sign() != 0)
 		if !tryConsumeGas(&gas, statelessGas) {
 			return nil, ErrExecutionReverted
 		}
