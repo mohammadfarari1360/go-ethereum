@@ -344,6 +344,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 			binary.LittleEndian.PutUint64(codeSizeBytes[:8], codeSize)
 			st.evm.Accesses.SetTxExistingTouchedLeaves(targetAddr.Bytes(), targetBalance, targetNonce, targetCodeSize, targetCodeKeccak)
 		}
+		if st.gas < gas {
+			return nil, fmt.Errorf("Insufficient funds to cover witness access costs for transaction: have %d, want %d", st.gas, gas)
+		}
 	}
 	st.gas -= gas
 
