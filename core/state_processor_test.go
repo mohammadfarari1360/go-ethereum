@@ -401,7 +401,7 @@ func TestProcessStateless(t *testing.T) {
 	var buf bytes.Buffer
 	rlp.Encode(&buf, chain[1])
 	f.Write(buf.Bytes())
-	fmt.Printf("%x", chain[0].Root())
+	fmt.Printf("%x\n", chain[0].Root())
 
 	_, err := blockchain.InsertChain(chain)
 	if err != nil {
