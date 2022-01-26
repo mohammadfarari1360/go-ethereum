@@ -17,8 +17,11 @@
 package core
 
 import (
+	"bytes"
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -31,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"golang.org/x/crypto/sha3"
 )
@@ -391,6 +395,13 @@ func TestProcessStateless(t *testing.T) {
 		tx, _ = types.SignTx(types.NewTransaction(uint64(i) * 3 + 2, common.Address{}, big.NewInt(0), txCost, big.NewInt(875000000), nil), signer, testKey)
 		gen.AddTx(tx)
 	})
+
+	f, _ := os.Create("block1.rlp")
+	defer f.Close()
+	var buf bytes.Buffer
+	rlp.Encode(&buf, chain[1])
+	f.Write(buf.Bytes())
+	fmt.Printf("%x", chain[0].Root())
 
 	_, err := blockchain.InsertChain(chain)
 	if err != nil {
