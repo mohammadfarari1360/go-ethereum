@@ -87,7 +87,8 @@ type Header struct {
 	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
 
 	// The verkle proof is ignored in legacy headers
-	VerkleProof []byte `json:"verkleProof" rlp:"optional"`
+	VerkleProof   []byte `json:"verkleProof" rlp:"optional"`
+	VerkleKeyVals []byte `json:"verkleKeyVals" rlp:"optional"`
 
 	/*
 		TODO (MariusVanDerWijden) Add this field once needed
@@ -340,8 +341,9 @@ func (b *Block) SanityCheck() error {
 	return b.header.SanityCheck()
 }
 
-func (b *Block) SetVerkleProof(vp []byte) {
+func (b *Block) SetVerkleProof(vp, kv []byte) {
 	b.header.VerkleProof = vp
+	b.header.VerkleKeyVals = kv
 }
 
 type writeCounter common.StorageSize
