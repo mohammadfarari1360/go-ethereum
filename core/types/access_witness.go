@@ -95,6 +95,10 @@ func (aw *AccessWitness) touchAddressOnWrite(addr []byte) (bool, bool, bool) {
 		chunkValue.mode |= AccessWitnessWriteFlag
 		aw.Chunks[common.BytesToHash(addr)] = chunkValue
 	}
+	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyCodeSize(addr[:]), nil)
+	gas += aw.TouchAddressAndChargeGas(utils.GetTreeKeyCodeKeccak(addr[:]), nil)
+	return gas
+}
 
 	// TODO charge chunk filling costs if the leaf was previously empty in the state
 	/*
@@ -204,10 +208,10 @@ func (aw *AccessWitness) Keys() [][]byte {
 	return keys
 }
 
-func (aw *AccessWitness) KeyVals() map[common.Hash][]byte {
-	result := make(map[common.Hash][]byte)
+func (aw *AccessWitness) KeyVals() map[string][]byte {
+	result := make(map[string][]byte)
 	for k, v := range aw.Chunks {
-		result[k] = v.value
+		result[string(k[:])] = v.value
 	}
 	return result
 }
