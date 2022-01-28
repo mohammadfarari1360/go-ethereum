@@ -247,8 +247,12 @@ func (aw *AccessWitness) Keys() [][]byte {
 	return keys
 }
 
-func (aw *AccessWitness) KeyVals() map[common.Hash][]byte {
-	return aw.Chunks
+func (aw *AccessWitness) KeyVals() map[string][]byte {
+	ret := map[string][]byte{}
+	for k, v := range aw.Chunks {
+		ret[string(k[:])] = v
+	}
+	return ret
 }
 
 func (aw *AccessWitness) Copy() *AccessWitness {
