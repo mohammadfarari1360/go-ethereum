@@ -382,17 +382,17 @@ func TestProcessStateless(t *testing.T) {
 	blockchain, _ := NewBlockChain(db, nil, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
 	defer blockchain.Stop()
 	var blockGasUsedExpected uint64
-	chain, _ := GenerateVerkleChain(gspec.Config, genesis, ethash.NewFaker(), db, 1, func(i int, gen *BlockGen) {
+	chain, _ := GenerateVerkleChain(gspec.Config, genesis, ethash.NewFaker(), db, 2, func(i int, gen *BlockGen) {
 		// TODO need to check that the tx cost provided is the exact amount used (no remaining left-over)
 		txCost := params.WitnessBranchWriteCost*2 + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*3 + params.WitnessChunkReadCost*12 + params.TxGas
 		blockGasUsedExpected += txCost * 2
-		tx, _ := types.SignTx(types.NewTransaction(uint64(i) * 3, common.Address{1, 2, 3}, big.NewInt(999), txCost, big.NewInt(875000000), nil), signer, testKey)
+		tx, _ := types.SignTx(types.NewTransaction(uint64(i)*3, common.Address{1, 2, 3}, big.NewInt(999), txCost, big.NewInt(875000000), nil), signer, testKey)
 		gen.AddTx(tx)
-		tx, _ = types.SignTx(types.NewTransaction(uint64(i) * 3 + 1, common.Address{}, big.NewInt(999), txCost, big.NewInt(875000000), nil), signer, testKey)
+		tx, _ = types.SignTx(types.NewTransaction(uint64(i)*3+1, common.Address{}, big.NewInt(999), txCost, big.NewInt(875000000), nil), signer, testKey)
 		gen.AddTx(tx)
 		txCost = params.WitnessBranchWriteCost + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*2 + params.WitnessChunkReadCost*10 + params.TxGas
 		blockGasUsedExpected += txCost
-		tx, _ = types.SignTx(types.NewTransaction(uint64(i) * 3 + 2, common.Address{}, big.NewInt(0), txCost, big.NewInt(875000000), nil), signer, testKey)
+		tx, _ = types.SignTx(types.NewTransaction(uint64(i)*3+2, common.Address{}, big.NewInt(0), txCost, big.NewInt(875000000), nil), signer, testKey)
 		gen.AddTx(tx)
 	})
 
