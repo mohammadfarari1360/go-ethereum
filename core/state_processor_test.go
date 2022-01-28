@@ -396,7 +396,7 @@ func TestProcessStateless(t *testing.T) {
 		gen.AddTx(tx)
 	})
 
-	f, _ := os.Create("block1.rlp")
+	f, _ := os.Create("block2.rlp")
 	defer f.Close()
 	var buf bytes.Buffer
 	rlp.Encode(&buf, chain[1])
