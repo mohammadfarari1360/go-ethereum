@@ -69,6 +69,7 @@ func (aw *AccessWitness) SetLeafValue(addr []byte, value []byte) {
 
 	if chunk, exists := aw.Chunks[common.BytesToHash(addr)]; exists {
 		chunk.value = value
+		aw.Chunks[common.BytesToHash(addr)] = chunk
 	} else {
 		panic(fmt.Sprintf("address not in access witness: %x", addr))
 	}
