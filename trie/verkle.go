@@ -72,7 +72,9 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	if err = t.TryUpdate(utils.GetTreeKeyNonce(key), nonce[:]); err != nil {
 		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
 	}
-	if err = t.TryUpdate(utils.GetTreeKeyBalance(key), acc.Balance.Bytes()); err != nil {
+	var balance [32]byte
+	copy(balance[32-len(acc.Balance.Bytes()):], acc.Balance.Bytes())
+	if err = t.TryUpdate(utils.GetTreeKeyBalance(key), balance[:]); err != nil {
 		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
 	}
 	if err = t.TryUpdate(utils.GetTreeKeyCodeKeccak(key), acc.CodeHash); err != nil {
