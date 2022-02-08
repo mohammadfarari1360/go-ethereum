@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/crate-crypto/go-ipa/bandersnatch/fr"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -105,9 +106,7 @@ func (trie *VerkleTrie) TryDelete(key []byte) error {
 // Hash returns the root hash of the trie. It does not write to the database and
 // can be used even if the trie doesn't have one.
 func (trie *VerkleTrie) Hash() common.Hash {
-	// TODO cache this value
-	rootC := trie.root.ComputeCommitment()
-	return rootC.Bytes()
+	return trie.root.ComputeCommitment().Bytes()
 }
 
 func nodeToDBKey(n verkle.VerkleNode) []byte {
@@ -269,7 +268,10 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 			// same thing with a yi
 			if !hasKey(seenComm, stem[:j]) {
 				addKey(seenComm, stem[:j])
-				yis = append(yis, node.ComputeCommitment())
+				var yi fr.Element
+				bytes := node.ComputeCommitment().Bytes()
+				yi.SetBytesLE(bytes[:])
+				yis = append(yis, &yi)
 			}
 		}
 
