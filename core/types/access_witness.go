@@ -68,8 +68,14 @@ func (aw *AccessWitness) SetLeafValue(addr []byte, value []byte) {
 	copy(stem[:], addr[:31])
 
 	if chunk, exists := aw.Chunks[common.BytesToHash(addr)]; exists && len(chunk.value) == 0 {
-		// overwrite nil
-		chunk.value = value
+		if len(value) < 32 && value != nil {
+			var aligned [32]byte
+			copy(aligned[:len(value)], value)
+			chunk.value = aligned[:]
+		} else {
+			// overwrite nil
+			chunk.value = value
+		}
 		aw.Chunks[common.BytesToHash(addr)] = chunk
 	} else if !exists {
 		panic(fmt.Sprintf("address not in access witness: %x", addr))
