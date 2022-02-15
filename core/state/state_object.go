@@ -18,6 +18,7 @@ package state
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/big"
@@ -520,6 +521,11 @@ func (s *stateObject) CodeSize(db Database) int {
 	size, err := db.ContractCodeSize(s.addrHash, common.BytesToHash(s.CodeHash()))
 	if err != nil {
 		s.setError(fmt.Errorf("can't load code size %x: %v", s.CodeHash(), err))
+	}
+	if s.db.trie.IsVerkle() {
+		var sz [32]byte
+		binary.LittleEndian.PutUint64(sz[:8], uint64(size))
+		s.db.witness.SetLeafValuesMessageCall(s.addrHash[:], sz[:])
 	}
 	return size
 }

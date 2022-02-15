@@ -347,7 +347,6 @@ func opExtCodeSize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
 		index := trieUtils.GetTreeKeyCodeSize(slot.Bytes())
 		statelessGas := interpreter.evm.Accesses.TouchAddressOnReadAndComputeGas(index)
-		interpreter.evm.Accesses.SetLeafValue(index, uint256.NewInt(cs).Bytes())
 		scope.Contract.UseGas(statelessGas)
 	}
 	slot.SetUint64(cs)
