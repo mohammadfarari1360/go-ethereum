@@ -527,7 +527,6 @@ func (s *stateObject) Code(db Database) []byte {
 		s.setError(fmt.Errorf("can't load code hash %x: %v", s.CodeHash(), err))
 	}
 	if s.db.GetTrie().IsVerkle() {
-		// XXX move this to the function
 		var cs [32]byte
 		binary.LittleEndian.PutUint64(cs[:8], uint64(len(code)))
 		s.db.witness.SetObjectCodeTouchedLeaves(s.address.Bytes(), cs[:], s.CodeHash())
