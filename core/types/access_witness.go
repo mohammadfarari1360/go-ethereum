@@ -17,7 +17,7 @@
 package types
 
 import (
-	"fmt"
+	"encoding/binary"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
@@ -67,11 +67,15 @@ func (aw *AccessWitness) SetLeafValue(addr []byte, value []byte) {
 	copy(stem[:], addr[:31])
 
 	// Sanity check: ensure that the location has been declared
-	if _, exists := aw.Chunks[common.BytesToHash(addr)]; !exists {
-		panic(fmt.Sprintf("address not in access witness: %x", addr))
-	}
 	if _, exist := aw.InitialValue[string(addr)]; !exist {
-		aw.InitialValue[string(addr)] = value
+		if len(value) == 32 || len(value) == 0 {
+			aw.InitialValue[string(addr)] = value
+		} else {
+			var aligned [32]byte
+			copy(aligned[:len(value)], value)
+
+			aw.InitialValue[string(addr)] = aligned[:]
+		}
 	}
 }
 
@@ -183,6 +187,12 @@ func (aw *AccessWitness) Merge(other *AccessWitness) {
 	for k, chunk := range other.Chunks {
 		if _, ok := aw.Chunks[k]; !ok {
 			aw.Chunks[k] = chunk
+		}
+	}
+
+	for k, v := range other.InitialValue {
+		if _, ok := aw.InitialValue[k]; !ok {
+			aw.InitialValue[k] = v
 		}
 	}
 }
@@ -323,11 +333,14 @@ func (aw *AccessWitness) TouchTxExistingAndComputeGas(targetAddr []byte, sendsVa
 	return gasUsed
 }
 
-func (aw *AccessWitness) SetTxOriginTouchedLeaves(originAddr, originBalance, originNonce []byte) {
+func (aw *AccessWitness) SetTxOriginTouchedLeaves(originAddr, originBalance, originNonce []byte, codeSize int) {
 	var version [32]byte
 	aw.SetLeafValue(utils.GetTreeKeyVersion(originAddr[:]), version[:])
 	aw.SetLeafValue(utils.GetTreeKeyBalance(originAddr[:]), originBalance)
 	aw.SetLeafValue(utils.GetTreeKeyNonce(originAddr[:]), originNonce)
+	var cs [32]byte
+	binary.LittleEndian.PutUint64(cs[:8], uint64(codeSize))
+	aw.SetLeafValue(utils.GetTreeKeyCodeSize(originAddr[:]), cs[:])
 }
 
 func (aw *AccessWitness) SetTxExistingTouchedLeaves(targetAddr, targetBalance, targetNonce, targetCodeSize, targetCodeHash []byte) {
@@ -337,4 +350,16 @@ func (aw *AccessWitness) SetTxExistingTouchedLeaves(targetAddr, targetBalance, t
 	aw.SetLeafValue(utils.GetTreeKeyNonce(targetAddr[:]), targetNonce)
 	aw.SetLeafValue(utils.GetTreeKeyCodeSize(targetAddr[:]), targetCodeSize)
 	aw.SetLeafValue(utils.GetTreeKeyCodeKeccak(targetAddr[:]), targetCodeHash)
+}
+
+func (aw *AccessWitness) SetGetObjectTouchedLeaves(targetAddr, version, targetBalance, targetNonce, targetCodeHash []byte) {
+	aw.SetLeafValue(utils.GetTreeKeyVersion(targetAddr[:]), version[:])
+	aw.SetLeafValue(utils.GetTreeKeyBalance(targetAddr[:]), targetBalance)
+	aw.SetLeafValue(utils.GetTreeKeyNonce(targetAddr[:]), targetNonce)
+	aw.SetLeafValue(utils.GetTreeKeyCodeKeccak(targetAddr[:]), targetCodeHash)
+}
+
+func (aw *AccessWitness) SetObjectCodeTouchedLeaves(addr, cs, ch []byte) {
+	aw.SetLeafValue(utils.GetTreeKeyCodeSize(addr[:]), cs)
+	aw.SetLeafValue(utils.GetTreeKeyCodeKeccak(addr[:]), ch)
 }
