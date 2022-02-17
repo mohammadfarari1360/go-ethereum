@@ -386,7 +386,7 @@ func TestProcessStateless(t *testing.T) {
 	blockGasUsedExpected := txCost1*2 + txCost2
 	chain, _ := GenerateVerkleChain(gspec.Config, genesis, ethash.NewFaker(), db, 2, func(i int, gen *BlockGen) {
 		// TODO need to check that the tx cost provided is the exact amount used (no remaining left-over)
-		tx, _ := types.SignTx(types.NewTransaction(uint64(i)*3, common.Address{1, 2, 3}, big.NewInt(999), txCost1, big.NewInt(875000000), nil), signer, testKey)
+		tx, _ := types.SignTx(types.NewTransaction(uint64(i)*3, common.Address{byte(i), 2, 3}, big.NewInt(999), txCost1, big.NewInt(875000000), nil), signer, testKey)
 		gen.AddTx(tx)
 		tx, _ = types.SignTx(types.NewTransaction(uint64(i)*3+1, common.Address{}, big.NewInt(999), txCost1, big.NewInt(875000000), nil), signer, testKey)
 		gen.AddTx(tx)

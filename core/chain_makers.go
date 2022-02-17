@@ -347,6 +347,7 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 				if err != nil {
 					panic(err)
 				}
+
 				// Sanity check: ensure all flagged addresses have an associated
 				// value: keys is built from Chunks and kvs from InitialValue.
 				if _, exists := kvs[string(key)]; !exists {
