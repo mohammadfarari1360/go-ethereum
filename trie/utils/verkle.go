@@ -42,7 +42,6 @@ var (
 
 func GetTreeKey(address []byte, treeIndex *uint256.Int, subIndex byte) []byte {
 	var poly [256]fr.Element
-	verkle.FromLEBytes(&poly[0], []byte{1})
 	verkle.FromLEBytes(&poly[0], []byte{2, 63})
 	verkle.FromLEBytes(&poly[1], address[:16])
 	verkle.FromLEBytes(&poly[2], address[16:])
