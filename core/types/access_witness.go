@@ -261,11 +261,6 @@ func (aw *AccessWitness) TouchAndChargeValueTransfer(callerAddr, targetAddr []by
 	return gas
 }
 
-func (aw *AccessWitness) SetLeafValuesValueTransfer(callerAddr, targetAddr, callerBalance, targetBalance []byte) {
-	aw.SetLeafValue(utils.GetTreeKeyBalance(callerAddr[:]), callerBalance)
-	aw.SetLeafValue(utils.GetTreeKeyBalance(targetAddr[:]), targetBalance)
-}
-
 // TouchAndChargeContractCreateInit charges access costs to initiate
 // a contract creation
 func (aw *AccessWitness) TouchAndChargeContractCreateInit(addr []byte, createSendsValue bool) uint64 {
@@ -276,15 +271,6 @@ func (aw *AccessWitness) TouchAndChargeContractCreateInit(addr []byte, createSen
 		gas += aw.TouchAddressOnWriteAndComputeGas(utils.GetTreeKeyBalance(addr[:]))
 	}
 	return gas
-}
-
-func (aw *AccessWitness) SetLeafValuesContractCreateInit(addr, nonce, value []byte) {
-	var version [32]byte
-	aw.SetLeafValue(utils.GetTreeKeyVersion(addr[:]), version[:])
-	aw.SetLeafValue(utils.GetTreeKeyNonce(addr[:]), nonce)
-	if value != nil {
-		aw.SetLeafValue(utils.GetTreeKeyBalance(addr[:]), value)
-	}
 }
 
 // TouchAndChargeContractCreateCompleted charges access access costs after
