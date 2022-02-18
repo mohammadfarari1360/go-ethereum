@@ -381,9 +381,12 @@ func TestProcessStateless(t *testing.T) {
 	genesis := gspec.MustCommit(db)
 	blockchain, _ := NewBlockChain(db, nil, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
 	defer blockchain.Stop()
+
+	code := common.FromHex(`6060604052600a8060106000396000f360606040526008565b00`)
 	txCost1 := params.WitnessBranchWriteCost*2 + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*3 + params.WitnessChunkReadCost*10 + params.TxGas
 	txCost2 := params.WitnessBranchWriteCost + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*2 + params.WitnessChunkReadCost*10 + params.TxGas
-	contractCreationCost := uint64(70919)
+	intrinsic, _ := IntrinsicGas(code, nil, true, true, true)
+	contractCreationCost := intrinsic + (2*params.WitnessChunkReadCost+params.WitnessChunkWriteCost)*10 + params.WitnessBranchReadCost + params.WitnessBranchWriteCost + uint64(3639) // standard cost of executing the contract
 	blockGasUsagesExpected := []uint64{txCost1*2 + txCost2, txCost1*2 + txCost2 + contractCreationCost}
 	chain, _ := GenerateVerkleChain(gspec.Config, genesis, ethash.NewFaker(), db, 2, func(i int, gen *BlockGen) {
 		// TODO need to check that the tx cost provided is the exact amount used (no remaining left-over)
@@ -396,7 +399,6 @@ func TestProcessStateless(t *testing.T) {
 
 		// Add a contract creation in block #2
 		if i == 1 {
-			code := common.FromHex(`6060604052600a8060106000396000f360606040526008565b00`)
 			tx, _ = types.SignTx(types.NewContractCreation(6, big.NewInt(16), 3000000, big.NewInt(875000000), code), signer, testKey)
 			gen.AddTx(tx)
 		}
