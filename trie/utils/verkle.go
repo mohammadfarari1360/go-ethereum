@@ -100,17 +100,17 @@ func GetTreeKeyCodeChunk(address []byte, chunk *uint256.Int) []byte {
 }
 
 func GetTreeKeyStorageSlot(address []byte, storageKey *uint256.Int) []byte {
-	treeIndex := storageKey.Clone()
+	pos := storageKey.Clone()
 	if storageKey.Cmp(codeStorageDelta) < 0 {
-		treeIndex.Add(HeaderStorageOffset, storageKey)
+		pos.Add(HeaderStorageOffset, storageKey)
 	} else {
-		treeIndex.Add(MainStorageOffset, storageKey)
+		pos.Add(MainStorageOffset, storageKey)
 	}
-	treeIndex.Div(treeIndex, VerkleNodeWidth)
+	treeIndex := new(uint256.Int).Div(pos, VerkleNodeWidth)
 
 	// calculate the sub_index, i.e. the index in the stem tree.
 	// Because the modulus is 256, it's the last byte of treeIndex
-	subIndexMod := treeIndex.Bytes()
+	subIndexMod := new(uint256.Int).Mod(pos, VerkleNodeWidth).Bytes()
 	var subIndex byte
 	if len(subIndexMod) != 0 {
 		// Get the last byte, as uint256.Int is big-endian
