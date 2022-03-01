@@ -56,7 +56,8 @@ func GetTreeKey(address []byte, treeIndex *uint256.Int, subIndex byte) []byte {
 		verkle.CopyFr(&poly[i], &verkle.FrZero)
 	}
 
-	ret := verkle.GetConfig().CommitToPoly(poly[:], 0)
+	cfg, _ := verkle.GetConfig()
+	ret := cfg.CommitToPoly(poly[:], 0)
 	retb := ret.Bytes()
 	retb[31] = subIndex
 	return retb[:]

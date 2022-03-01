@@ -392,7 +392,6 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, address []byte, code
 	}
 	var (
 		statelessGasCharged uint64
-		startLeafOffset     uint64
 		endLeafOffset       uint64
 		startOffset         uint64
 		endOffset           uint64
@@ -407,10 +406,10 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, address []byte, code
 		endOffset = startOffset + size
 	}
 	endLeafOffset = endOffset + (endOffset % 31)
-	numLeaves = (endLeafOffset - startLeafOffset) / 31
+	numLeaves = (endLeafOffset - startOffset + 30) / 31
 
 	for i := 0; i < int(numLeaves); i++ {
-		index := trieUtils.GetTreeKeyCodeChunk(address, uint256.NewInt(uint64(i)))
+		index := trieUtils.GetTreeKeyCodeChunk(address, uint256.NewInt(uint64(i)+startOffset/31))
 
 		// TODO safe-add here to catch overflow
 		statelessGasCharged += accesses.TouchAddressOnReadAndComputeGas(index)
