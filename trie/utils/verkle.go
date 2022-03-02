@@ -113,8 +113,10 @@ func GetTreeKeyStorageSlot(address []byte, storageKey *uint256.Int) []byte {
 	subIndexMod := new(uint256.Int).Mod(pos, VerkleNodeWidth).Bytes()
 	var subIndex byte
 	if len(subIndexMod) != 0 {
-		// Get the last byte, as uint256.Int is big-endian
-		subIndex = subIndexMod[len(subIndexMod)-1]
+		// uint256 is broken into 4 little-endian quads,
+		// each with native endianness. Extract the least
+		// significant byte.
+		subIndex = byte(subIndexMod[0] & 0xFF)
 	}
 	return GetTreeKey(address, treeIndex, subIndex)
 }
