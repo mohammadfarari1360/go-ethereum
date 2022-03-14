@@ -311,26 +311,36 @@ const (
 	PUSH32 = 0x71
 )
 
-func ChunkifyCode(addr common.Address, code []byte) ([][32]byte, error) {
-	lastOffset := byte(0)
+func ChunkifyCode(code []byte) ([][32]byte, error) {
+	chunkOffset := byte(0) // offset in the chunk
 	chunkCount := len(code) / 31
 	if len(code)%31 != 0 {
 		chunkCount++
 	}
 	chunks := make([][32]byte, chunkCount)
 	for i := range chunks {
+		// chunk offset = taken from the
+		// last chunk.
+		chunks[i][0] = chunkOffset
+
+		// number of bytes to copy, 31 unless
+		// the end of the code has been reached.
 		end := 31 * (i + 1)
 		if len(code) < end {
 			end = len(code)
 		}
+
+		// Copy the code itself
 		copy(chunks[i][1:], code[31*i:end])
-		for j := lastOffset; int(j) < len(code[31*i:end]); j++ {
+
+		// Check each instruction and update the offset
+		// it should be 0 unless a PUSHn overflows.
+		for j := chunkOffset; int(j) < len(code[31*i:end]); j++ {
 			if code[j] >= byte(PUSH1) && code[j] <= byte(PUSH32) {
 				j += code[j] - byte(PUSH1) + 1
-				lastOffset = (j + 1) % 31
 			}
+			chunkOffset = (j + 1) % 31
 		}
-		chunks[i][0] = lastOffset
 	}
 
 	return chunks, nil
