@@ -312,16 +312,16 @@ const (
 )
 
 func ChunkifyCode(code []byte) ([][32]byte, error) {
-	chunkOffset := 0 // offset in the chunk
-	chunkCount := len(code) / 31
+	var (
+		chunkOffset = 0 // offset in the chunk
+		chunkCount  = len(code) / 31
+		codeOffset  = 0 // offset in the code
+	)
 	if len(code)%31 != 0 {
 		chunkCount++
 	}
 	chunks := make([][32]byte, chunkCount)
 	for i := range chunks {
-		// chunk offset = taken from the
-		// last chunk.
-		chunks[i][0] = byte(chunkOffset)
 
 		// number of bytes to copy, 31 unless
 		// the end of the code has been reached.
@@ -333,13 +333,40 @@ func ChunkifyCode(code []byte) ([][32]byte, error) {
 		// Copy the code itself
 		copy(chunks[i][1:], code[31*i:end])
 
+		// chunk offset = taken from the
+		// last chunk.
+		if chunkOffset > 31 {
+			// skip offset calculation if push
+			// data covers the whole chunk
+			chunks[i][0] = 31
+			chunkOffset = 1
+			continue
+		}
+		chunks[i][0] = byte(chunkOffset)
+		chunkOffset = 0
+
 		// Check each instruction and update the offset
 		// it should be 0 unless a PUSHn overflows.
-		for j := int(chunkOffset) + 31*i; j < end; j++ {
-			if code[j] >= PUSH1 && code[j] <= PUSH32 {
-				j += int(code[j]) - PUSH1 + 1
+		for ; codeOffset < end; codeOffset++ {
+			if code[codeOffset] >= PUSH1 && code[codeOffset] <= PUSH32 {
+				codeOffset += int(code[codeOffset]) - PUSH1 + 1
+				if codeOffset+1 >= 31*(i+1) {
+					codeOffset++
+					chunkOffset = codeOffset - 31*(i+1)
+					break
+				}
 			}
-			chunkOffset = (j + 1) % 31
+		}
+	}
+
+	// if PUSHDATA went past the code end, add 0-filled chunks with
+	// the correct offset.
+	if chunkOffset > 0 {
+
+		if chunkOffset > 31 {
+			chunks = append(chunks, [32]byte{31}, [32]byte{1})
+		} else {
+			chunks = append(chunks, [32]byte{byte(chunkOffset)})
 		}
 	}
 
