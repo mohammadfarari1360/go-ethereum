@@ -308,11 +308,11 @@ func deserializeVerkleProof(serialized []byte) (*verkle.Proof, []*verkle.Point, 
 // Copy the values here so as to avoid an import cycle
 const (
 	PUSH1  = 0x60
-	PUSH32 = 0x71
+	PUSH32 = 0x7f
 )
 
 func ChunkifyCode(code []byte) ([][32]byte, error) {
-	chunkOffset := byte(0) // offset in the chunk
+	chunkOffset := 0 // offset in the chunk
 	chunkCount := len(code) / 31
 	if len(code)%31 != 0 {
 		chunkCount++
@@ -321,7 +321,7 @@ func ChunkifyCode(code []byte) ([][32]byte, error) {
 	for i := range chunks {
 		// chunk offset = taken from the
 		// last chunk.
-		chunks[i][0] = chunkOffset
+		chunks[i][0] = byte(chunkOffset)
 
 		// number of bytes to copy, 31 unless
 		// the end of the code has been reached.
@@ -335,9 +335,9 @@ func ChunkifyCode(code []byte) ([][32]byte, error) {
 
 		// Check each instruction and update the offset
 		// it should be 0 unless a PUSHn overflows.
-		for j := chunkOffset; int(j) < len(code[31*i:end]); j++ {
-			if code[j] >= byte(PUSH1) && code[j] <= byte(PUSH32) {
-				j += code[j] - byte(PUSH1) + 1
+		for j := int(chunkOffset) + 31*i; j < end; j++ {
+			if code[j] >= PUSH1 && code[j] <= PUSH32 {
+				j += int(code[j]) - PUSH1 + 1
 			}
 			chunkOffset = (j + 1) % 31
 		}

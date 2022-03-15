@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/gballet/go-verkle"
 )
 
@@ -89,7 +90,7 @@ func TestReproduceTree(t *testing.T) {
 	t.Logf("tree: %s\n%x\n", verkle.ToDot(root), root.ComputeCommitment().Bytes())
 }
 
-func TestChunkifyCode(t *testing.T) {
+func TestChunkifyCodeTestnet(t *testing.T) {
 	code, _ := hex.DecodeString("6080604052348015600f57600080fd5b506004361060285760003560e01c806381ca91d314602d575b600080fd5b60336047565b604051603e9190605a565b60405180910390f35b60005481565b6054816073565b82525050565b6000602082019050606d6000830184604d565b92915050565b600081905091905056fea264697066735822122000382db0489577c1646ea2147a05f92f13f32336a32f1f82c6fb10b63e19f04064736f6c63430008070033")
 	chunks, err := ChunkifyCode(code)
 	if err != nil {
@@ -103,7 +104,10 @@ func TestChunkifyCode(t *testing.T) {
 	}
 	t.Logf("%x\n", chunks[0])
 	for i, chunk := range chunks[1:] {
-		if chunk[0] != 0 {
+		if chunk[0] != 0 && i != 4 {
+			t.Fatalf("invalid offset in chunk #%d %d != 0", i+1, chunk[0])
+		}
+		if i == 4 && chunk[0] != 12 {
 			t.Fatalf("invalid offset in chunk #%d %d != 0", i+1, chunk[0])
 		}
 	}
@@ -121,9 +125,10 @@ func TestChunkifyCode(t *testing.T) {
 		t.Fatalf("invalid offset in first chunk %d != 0", chunks[0][0])
 	}
 	t.Logf("%x\n", chunks[0])
+	expected := []byte{0, 1, 0, 13, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3}
 	for i, chunk := range chunks[1:] {
-		if chunk[0] != 0 {
-			t.Fatalf("invalid offset in chunk #%d %d != 0", i+1, chunk[0])
+		if chunk[0] != expected[i] {
+			t.Fatalf("invalid offset in chunk #%d %d != %d", i+1, chunk[0], expected[i])
 		}
 	}
 	t.Logf("code=%x, chunks=%x\n", code, chunks)
@@ -139,11 +144,40 @@ func TestChunkifyCode(t *testing.T) {
 	if chunks[0][0] != 0 {
 		t.Fatalf("invalid offset in first chunk %d != 0", chunks[0][0])
 	}
-	t.Logf("%x\n", chunks[0])
+	expected = []byte{0, 0, 0, 0, 13}
 	for i, chunk := range chunks[1:] {
-		if chunk[0] != 0 {
-			t.Fatalf("invalid offset in chunk #%d %d != 0", i+1, chunk[0])
+		if chunk[0] != expected[i] {
+			t.Fatalf("invalid offset in chunk #%d %d != %d", i+1, chunk[0], expected[i])
 		}
 	}
 	t.Logf("code=%x, chunks=%x\n", code, chunks)
+}
+
+func TestChunkifyCodeSimple(t *testing.T) {
+	code := []byte{
+		0, byte(vm.PUSH4), 1, 2, 3, 4, byte(vm.PUSH3), 58, 68, 12, byte(vm.PUSH21), 1, 2, 3, 4, 5, 6,
+		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+		// Second 31 bytes
+		0, byte(vm.PUSH21), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+		byte(vm.PUSH7), 1, 2, 3, 4, 5, 6, 7,
+		// Third 31 bytes
+		byte(vm.PUSH30), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+		23, 24, 25, 26, 27, 28, 29, 30,
+	}
+	chunks, err := ChunkifyCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("invalid length %d", len(chunks))
+	}
+	if chunks[0][0] != 0 {
+		t.Fatalf("invalid offset in first chunk %d != 0", chunks[0][0])
+	}
+	if chunks[1][0] != 1 {
+		t.Fatalf("invalid offset in second chunk %d != 0, chunk=%x", chunks[1][0], chunks[1])
+	}
+	if chunks[2][0] != 0 {
+		t.Fatalf("invalid offset in third chunk %d != 0", chunks[2][0])
+	}
 }
