@@ -17,6 +17,7 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -66,6 +68,22 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		allLogs     []*types.Log
 		gp          = new(GasPool).AddGas(block.GasLimit())
 	)
+	tr := statedb.GetTrie().(*trie.VerkleTrie)
+	var keys [][]byte
+	keyvals := map[string][]byte{}
+	for _, kv := range block.Header().VerkleKeyVals {
+		tr.TryGet(kv.Key)
+		keyvals[string(kv.Key)] = kv.Value
+		keys = append(keys, kv.Key)
+	}
+	serialized_proof, _, err := tr.ProveAndSerialize(keys, keyvals)
+	if err != nil {
+		panic(err)
+	}
+	if !bytes.Equal(serialized_proof, header.VerkleProof) {
+		panic(fmt.Sprintf("proofs differ: %x != %x", serialized_proof, header.VerkleProof))
+	}
+
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(statedb)

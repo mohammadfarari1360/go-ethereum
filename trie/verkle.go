@@ -181,10 +181,16 @@ func (trie *VerkleTrie) IsVerkle() bool {
 }
 
 func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[string][]byte) ([]byte, []verkle.KeyValuePair, error) {
-	proof, _, _, _ := verkle.MakeVerkleMultiProof(trie.root, keys, kv)
+	proof, cis, zis, yis := verkle.MakeVerkleMultiProof(trie.root, keys, kv)
 	p, kvps, err := verkle.SerializeProof(proof)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	/* Sanity check during development */
+	cfg, _ := verkle.GetConfig()
+	if !verkle.VerifyVerkleProof(proof, cis, zis, yis, cfg) {
+		return nil, nil, fmt.Errorf("could not self-verify proof")
 	}
 
 	return p, kvps, nil
