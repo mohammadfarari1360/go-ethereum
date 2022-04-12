@@ -17,14 +17,15 @@
 package vm
 
 import (
+	"math"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
-	"github.com/holiman/uint256"
-	"golang.org/x/crypto/sha3"
+	"github.com/holiman/uint256""golang.org/x/crypto/sha3"
 )
 
 func opAdd(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
@@ -410,8 +411,7 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, address []byte, code
 	for i := offset / 31; i <= (endOffset-1)/31; i++ {
 		index := trieUtils.GetTreeKeyCodeChunk(address, uint256.NewInt(i))
 
-		// TODO safe-add here to catch overflow
-		statelessGasCharged += accesses.TouchAddressOnReadAndComputeGas(index)
+		statelessGasCharged = math.safeAdd(statelessGasCharged, accesses.TouchAddressOnReadAndComputeGas(index))
 		if code != nil && len(code) > 0 {
 			if deployment {
 				accesses.SetLeafValue(index[:], nil)
