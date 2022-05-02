@@ -389,14 +389,14 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, address []byte, code
 	// reason that we do not need the last leaf is the account's code size
 	// is already in the AccessWitness so a stateless verifier can see that
 	// the code from the last leaf is not needed.
-	if size == 0 || offset > uint64(len(code)) {
+	if code != nil && (size == 0 || offset > uint64(len(code))) {
 		return 0
 	}
 	var (
 		statelessGasCharged uint64
 		endOffset           uint64
 	)
-	if offset+size > uint64(len(code)) {
+	if code != nil && offset+size > uint64(len(code)) {
 		endOffset = uint64(len(code))
 	} else {
 		endOffset = offset + size
