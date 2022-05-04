@@ -637,12 +637,16 @@ func convertToVerkle(ctx *cli.Context) error {
 		return err
 	}
 	var (
-		accounts int
-		//slots      int
-		//codes      int
+		accounts   int
 		lastReport time.Time
 		start      = time.Now()
 	)
+
+	convdb, err := rawdb.NewLevelDBDatabase("verkle", 128, 128, "", false)
+	if err != nil {
+		panic(err)
+	}
+
 	vRoot := verkle.New()
 	accIter := trie.NewIterator(t.NodeIterator(nil))
 	for accIter.Next() {
@@ -661,11 +665,23 @@ func convertToVerkle(ctx *cli.Context) error {
 			balance[len(acc.Balance.Bytes())-1-i] = b
 		}
 		// XXX use preimages, accIter is the hash of the address
-		// XXX optimize by not calling gettreekeyversion
-		vRoot.Insert(trieUtils.GetTreeKeyVersion(accIter.Key[:]), version[:], nil)
-		vRoot.Insert(trieUtils.GetTreeKeyBalance(accIter.Key[:]), balance[:], nil)
-		vRoot.Insert(trieUtils.GetTreeKeyNonce(accIter.Key[:]), nonce[:], nil)
-		vRoot.Insert(trieUtils.GetTreeKeyCodeKeccak(accIter.Key[:]), acc.CodeHash, nil)
+		versionkey := trieUtils.GetTreeKeyVersion(accIter.Key[:])
+		vRoot.Insert(versionkey, version[:], nil)
+		var balanceKey [32]byte
+		copy(balanceKey[:31], versionkey[:31])
+		balanceKey[31] = 1
+		vRoot.Insert(balanceKey[:], balance[:], nil)
+		var nonceKey [32]byte
+		copy(nonceKey[:31], versionkey[:31])
+		nonceKey[31] = 2
+		vRoot.Insert(nonceKey[:], nonce[:], nil)
+		var shakey [32]byte
+		copy(shakey[:31], versionkey[:31])
+		shakey[31] = 3
+		vRoot.Insert(shakey[:], acc.CodeHash, nil)
+		var sizekey [32]byte
+		copy(sizekey[:31], versionkey[:31])
+		sizekey[31] = 3
 
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
@@ -679,10 +695,10 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			var size [32]byte
 			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
-			vRoot.Insert(trieUtils.GetTreeKeyCodeSize(accIter.Key[:]), size[:], nil)
+			vRoot.Insert(sizekey[:], size[:], nil)
 		} else {
 			// hack: because version is also 0, use it as the code size
-			vRoot.Insert(trieUtils.GetTreeKeyCodeSize(accIter.Key[:]), version[:], nil)
+			vRoot.Insert(sizekey[:], version[:], nil)
 		}
 
 		// Save every slot into the tree
@@ -703,6 +719,17 @@ func convertToVerkle(ctx *cli.Context) error {
 				return storageIter.Err
 			}
 		}
+
+		vRoot.(*verkle.InternalNode).FlushStem(versionkey[:31], func(n verkle.VerkleNode) {
+			s, err := n.Serialize()
+			if err != nil {
+				panic(err)
+			}
+			comm := n.ComputeCommitment().Bytes()
+			if err := convdb.Put(comm[:], s); err != nil {
+				panic(err)
+			}
+		})
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
