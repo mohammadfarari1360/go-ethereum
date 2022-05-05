@@ -647,6 +647,17 @@ func convertToVerkle(ctx *cli.Context) error {
 		panic(err)
 	}
 
+	saveverkle := func(n verkle.VerkleNode) {
+		s, err := n.Serialize()
+		if err != nil {
+			panic(err)
+		}
+		comm := n.ComputeCommitment().Bytes()
+		if err := convdb.Put(comm[:], s); err != nil {
+			panic(err)
+		}
+	}
+
 	vRoot := verkle.New()
 	accIter := trie.NewIterator(t.NodeIterator(nil))
 	for accIter.Next() {
@@ -690,8 +701,21 @@ func convertToVerkle(ctx *cli.Context) error {
 			if err != nil {
 				panic(err)
 			}
+			laststem := make([]byte, 31)
+			copy(laststem, versionkey[:31])
 			for i, chunk := range chunks {
-				vRoot.Insert(trieUtils.GetTreeKeyCodeChunk(accIter.Key[:], uint256.NewInt(uint64(i))), chunk[:], nil)
+				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIter.Key[:], uint256.NewInt(uint64(i)))
+
+				// if this chunk is inserted into a new group, and the previous group isn't
+				// that of the account header, flush the previous group.
+				if !bytes.Equal(laststem, chunkkey[:31]) {
+					if !bytes.Equal(laststem, versionkey[:31]) {
+						vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
+					}
+
+					laststem = chunkkey[:31]
+				}
+				vRoot.Insert(chunkkey, chunk[:], nil)
 			}
 			var size [32]byte
 			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
@@ -703,6 +727,8 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Save every slot into the tree
 		if acc.Root != emptyRoot {
+			laststem := make([]byte, 31)
+			copy(laststem, versionkey[:31])
 			sRoot := verkle.New()
 			storageTrie, err := trie.NewSecure(acc.Root, triedb)
 			if err != nil {
@@ -711,8 +737,19 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			storageIter := trie.NewIterator(storageTrie.NodeIterator(nil))
 			for storageIter.Next() {
+				slotkey := trieUtils.GetTreeKeyStorageSlot(accIter.Key, uint256.NewInt(0).SetBytes(storageIter.Key))
+
+				// if this slot is inserted into a new group, and the previous group isn't
+				// that of the account header, flush the previous group.
+				if !bytes.Equal(laststem, slotkey[:31]) {
+					if !bytes.Equal(laststem, versionkey[:31]) {
+						vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
+					}
+
+					laststem = slotkey[:31]
+				}
 				// XXX use preimages, accIter is the hash of the address
-				sRoot.Insert(trieUtils.GetTreeKeyStorageSlot(accIter.Key, uint256.NewInt(0).SetBytes(storageIter.Key)), storageIter.Value, nil)
+				sRoot.Insert(slotkey, storageIter.Value, nil)
 			}
 			if storageIter.Err != nil {
 				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIter.Err)
@@ -720,16 +757,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 		}
 
-		vRoot.(*verkle.InternalNode).FlushStem(versionkey[:31], func(n verkle.VerkleNode) {
-			s, err := n.Serialize()
-			if err != nil {
-				panic(err)
-			}
-			comm := n.ComputeCommitment().Bytes()
-			if err := convdb.Put(comm[:], s); err != nil {
-				panic(err)
-			}
-		})
+		vRoot.(*verkle.InternalNode).FlushStem(versionkey[:31], saveverkle)
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
