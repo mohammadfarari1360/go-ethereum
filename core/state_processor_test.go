@@ -22,7 +22,7 @@ import (
 	"crypto/ecdsa"
 	//"fmt"
 	"math/big"
-	//"os"
+	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/params"
 	//"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -477,7 +478,13 @@ func TestProcessVerkleCodeDeployExec(t *testing.T) {
 	// Verkle trees use the snapshot, which must be enabled before the
 	// data is saved into the tree+database.
 	genesis := gspec.MustCommit(db)
-	blockchain, _ := NewBlockChain(db, nil, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
+	traceFile, err := os.Create("trace.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logConfig := &logger.Config{}
+	tracer := logger.NewJSONLogger(logConfig, traceFile)
+	blockchain, _ := NewBlockChain(db, nil, gspec.Config, ethash.NewFaker(), vm.Config{Debug: true, Tracer: tracer}, nil, nil)
 	defer blockchain.Stop()
 
 	// compiled Storage.sol
@@ -496,7 +503,7 @@ func TestProcessVerkleCodeDeployExec(t *testing.T) {
 		}
 	})
 
-	_, err := blockchain.InsertChain(chain)
+	_, err = blockchain.InsertChain(chain)
 	if err != nil {
 		t.Fatalf("block imported with error: %v", err)
 	}
