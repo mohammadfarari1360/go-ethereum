@@ -677,19 +677,19 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 		// XXX use preimages, accIter is the hash of the address
 		versionkey := trieUtils.GetTreeKeyVersion(accIter.Key[:])
-		vRoot.Insert(versionkey, version[:], nil)
+		vRoot.Insert(versionkey, version[:], convdb.Get)
 		var balanceKey [32]byte
 		copy(balanceKey[:31], versionkey[:31])
 		balanceKey[31] = 1
-		vRoot.Insert(balanceKey[:], balance[:], nil)
+		vRoot.Insert(balanceKey[:], balance[:], convdb.Get)
 		var nonceKey [32]byte
 		copy(nonceKey[:31], versionkey[:31])
 		nonceKey[31] = 2
-		vRoot.Insert(nonceKey[:], nonce[:], nil)
+		vRoot.Insert(nonceKey[:], nonce[:], convdb.Get)
 		var shakey [32]byte
 		copy(shakey[:31], versionkey[:31])
 		shakey[31] = 3
-		vRoot.Insert(shakey[:], acc.CodeHash, nil)
+		vRoot.Insert(shakey[:], acc.CodeHash, convdb.Get)
 		var sizekey [32]byte
 		copy(sizekey[:31], versionkey[:31])
 		sizekey[31] = 3
@@ -715,21 +715,20 @@ func convertToVerkle(ctx *cli.Context) error {
 
 					laststem = chunkkey[:31]
 				}
-				vRoot.Insert(chunkkey, chunk[:], nil)
+				vRoot.Insert(chunkkey, chunk[:], convdb.Get)
 			}
 			var size [32]byte
 			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
-			vRoot.Insert(sizekey[:], size[:], nil)
+			vRoot.Insert(sizekey[:], size[:], convdb.Get)
 		} else {
 			// hack: because version is also 0, use it as the code size
-			vRoot.Insert(sizekey[:], version[:], nil)
+			vRoot.Insert(sizekey[:], version[:], convdb.Get)
 		}
 
 		// Save every slot into the tree
 		if acc.Root != emptyRoot {
 			laststem := make([]byte, 31)
 			copy(laststem, versionkey[:31])
-			sRoot := verkle.New()
 			storageTrie, err := trie.NewSecure(acc.Root, triedb)
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
@@ -748,9 +747,17 @@ func convertToVerkle(ctx *cli.Context) error {
 
 					laststem = slotkey[:31]
 				}
+				var value [32]byte
+				copy(value[:len(storageIter.Value)-1], storageIter.Value)
 				// XXX use preimages, accIter is the hash of the address
-				sRoot.Insert(slotkey, storageIter.Value, nil)
+				err = vRoot.Insert(slotkey,value[:], convdb.Get)
+				if err != nil {
+					panic(err)
+				}
 			}
+					if !bytes.Equal(laststem, versionkey[:31]) {
+						vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
+					}
 			if storageIter.Err != nil {
 				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIter.Err)
 				return storageIter.Err
