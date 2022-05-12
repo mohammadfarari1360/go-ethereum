@@ -40,6 +40,7 @@ import (
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 	"github.com/holiman/uint256"
+	"github.com/shirou/gopsutil/v3/mem"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -601,6 +602,13 @@ func dumpState(ctx *cli.Context) error {
 	return nil
 }
 
+func flushIfFullMem(root verkle.VerkleNode, flush verkle.NodeFlushFn) {
+	v, _ := mem.VirtualMemory()
+	if v.UsedPercent > 80.0 {
+		root.(*verkle.InternalNode).Flush(flush)
+	}
+}
+
 func convertToVerkle(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
@@ -727,8 +735,6 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Save every slot into the tree
 		if acc.Root != emptyRoot {
-			laststem := make([]byte, 31)
-			copy(laststem, versionkey[:31])
 			storageTrie, err := trie.NewSecure(acc.Root, triedb)
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
@@ -738,33 +744,22 @@ func convertToVerkle(ctx *cli.Context) error {
 			for storageIter.Next() {
 				slotkey := trieUtils.GetTreeKeyStorageSlot(accIter.Key, uint256.NewInt(0).SetBytes(storageIter.Key))
 
-				// if this slot is inserted into a new group, and the previous group isn't
-				// that of the account header, flush the previous group.
-				if !bytes.Equal(laststem, slotkey[:31]) {
-					if !bytes.Equal(laststem, versionkey[:31]) {
-						vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
-					}
-
-					laststem = slotkey[:31]
-				}
 				var value [32]byte
 				copy(value[:len(storageIter.Value)-1], storageIter.Value)
 				// XXX use preimages, accIter is the hash of the address
-				err = vRoot.Insert(slotkey,value[:], convdb.Get)
+				err = vRoot.Insert(slotkey, value[:], convdb.Get)
 				if err != nil {
 					panic(err)
 				}
+				flushIfFullMem(vRoot, saveverkle)
 			}
-					if !bytes.Equal(laststem, versionkey[:31]) {
-						vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
-					}
 			if storageIter.Err != nil {
 				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIter.Err)
 				return storageIter.Err
 			}
 		}
 
-		vRoot.(*verkle.InternalNode).FlushStem(versionkey[:31], saveverkle)
+		flushIfFullMem(vRoot, saveverkle)
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
