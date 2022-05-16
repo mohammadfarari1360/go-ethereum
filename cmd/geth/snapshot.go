@@ -40,6 +40,7 @@ import (
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 	"github.com/holiman/uint256"
+	"github.com/shirou/gopsutil/v3/mem"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -641,15 +642,21 @@ func convertToVerkle(ctx *cli.Context) error {
 		panic(err)
 	}
 
+	flushChan := make(chan verkle.VerkleNode)
+	go func() {
+		for node := range flushChan {
+			s, err := node.Serialize()
+			if err != nil {
+				panic(err)
+			}
+			comm := node.ComputeCommitment().Bytes()
+			if err := convdb.Put(comm[:], s); err != nil {
+				panic(err)
+			}
+		}
+	}()
 	saveverkle := func(n verkle.VerkleNode) {
-		s, err := n.Serialize()
-		if err != nil {
-			panic(err)
-		}
-		comm := n.ComputeCommitment().Bytes()
-		if err := convdb.Put(comm[:], s); err != nil {
-			panic(err)
-		}
+		flushChan <- n
 	}
 
 	vRoot := verkle.New()
@@ -663,6 +670,22 @@ func convertToVerkle(ctx *cli.Context) error {
 	}
 	defer accIt.Release()
 
+	// Loop over and over the tree and flush everything that is deeper
+	// than 2 nodes.
+	var done chan struct{}
+	defer func() { done <- struct{}{} }()
+	go func() {
+		for {
+			select {
+			case <-done:
+				break
+			default:
+				vRoot.(*verkle.InternalNode).FlushAtDepth(2, saveverkle)
+			}
+		}
+	}()
+
+	// Process all accounts sequentially
 	for accIt.Next() {
 		accounts += 1
 		acc, err := snapshot.FullAccount(accIt.Account())
@@ -703,20 +726,8 @@ func convertToVerkle(ctx *cli.Context) error {
 			if err != nil {
 				panic(err)
 			}
-			laststem := make([]byte, 31)
-			copy(laststem, versionkey[:31])
 			for i, chunk := range chunks {
 				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint256.NewInt(uint64(i)))
-
-				// if this chunk is inserted into a new group, and the previous group isn't
-				// that of the account header, flush the previous group.
-				if !bytes.Equal(laststem, chunkkey[:31]) {
-					if !bytes.Equal(laststem, versionkey[:31]) {
-						vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
-					}
-
-					laststem = chunkkey[:31]
-				}
 				vRoot.Insert(chunkkey, chunk[:], convdb.Get)
 			}
 			var size [32]byte
@@ -729,8 +740,6 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
-			laststem := make([]byte, 31)
-			copy(laststem, versionkey[:31])
 			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
@@ -739,16 +748,6 @@ func convertToVerkle(ctx *cli.Context) error {
 			defer storageIt.Release()
 			for storageIt.Next() {
 				slotkey := trieUtils.GetTreeKeyStorageSlot(accIt.Hash().Bytes(), uint256.NewInt(0).SetBytes(storageIt.Hash().Bytes()))
-
-				// if this slot is inserted into a new group, and the previous group isn't
-				// that of the account header, flush the previous group.
-				if !bytes.Equal(laststem, slotkey[:31]) {
-					if !bytes.Equal(laststem, versionkey[:31]) {
-						vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
-					}
-
-					laststem = slotkey[:31]
-				}
 				var value [32]byte
 				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
 				// XXX use preimages, accIter is the hash of the address
@@ -756,9 +755,12 @@ func convertToVerkle(ctx *cli.Context) error {
 				if err != nil {
 					panic(err)
 				}
-			}
-			if !bytes.Equal(laststem, versionkey[:31]) {
-				vRoot.(*verkle.InternalNode).FlushStem(laststem, saveverkle)
+
+				// Pace down if memory usage becomes very high
+				v, _ := mem.VirtualMemory()
+				if v.UsedPercent >= 85.0 {
+					time.Sleep(10 * time.Second)
+				}
 			}
 			if storageIt.Error() != nil {
 				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIt.Error())
