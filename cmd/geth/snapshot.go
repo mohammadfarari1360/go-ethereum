@@ -665,9 +665,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 	for accIt.Next() {
 		accounts += 1
-
-		var acc types.StateAccount
-		accIt, err := snaptree.AccountIterator(root, common.Hash{})
+		acc, err := snapshot.FullAccount(accIt.Account())
 		if err != nil {
 			log.Error("Invalid account encountered during traversal", "error", err)
 			return err
@@ -730,10 +728,10 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 
 		// Save every slot into the tree
-		if acc.Root != emptyRoot {
+		if !bytes.Equal(acc.Root, emptyRoot[:]) {
 			laststem := make([]byte, 31)
 			copy(laststem, versionkey[:31])
-			storageIt, err := snaptree.StorageIterator(root, acc.Root, common.Hash{})
+			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
 				return err
