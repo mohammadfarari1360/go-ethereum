@@ -642,9 +642,12 @@ func convertToVerkle(ctx *cli.Context) error {
 		panic(err)
 	}
 
-	flushChan := make(chan verkle.VerkleNode)
+	flushCh := make(chan verkle.VerkleNode)
+	saveverkle := func(node verkle.VerkleNode) {
+		flushCh <- node
+	}
 	go func() {
-		for node := range flushChan {
+		for node := range flushCh {
 			s, err := node.Serialize()
 			if err != nil {
 				panic(err)
@@ -655,9 +658,6 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 		}
 	}()
-	saveverkle := func(n verkle.VerkleNode) {
-		flushChan <- n
-	}
 
 	vRoot := verkle.New()
 	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, root, false, false, false)
@@ -672,13 +672,13 @@ func convertToVerkle(ctx *cli.Context) error {
 
 	// Loop over and over the tree and flush everything that is deeper
 	// than 2 nodes.
-	var done chan struct{}
+	done := make(chan struct{})
 	defer func() { done <- struct{}{} }()
 	go func() {
 		for {
 			select {
 			case <-done:
-				break
+				return
 			default:
 				vRoot.(*verkle.InternalNode).FlushAtDepth(2, saveverkle)
 			}
@@ -702,19 +702,32 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 		// XXX use preimages, accIter is the hash of the address
 		versionkey := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())
-		vRoot.Insert(versionkey, version[:], convdb.Get)
+		err = vRoot.Insert(versionkey, version[:], convdb.Get)
+		if err != nil {
+			panic(err)
+		}
 		var balanceKey [32]byte
 		copy(balanceKey[:31], versionkey[:31])
 		balanceKey[31] = 1
-		vRoot.Insert(balanceKey[:], balance[:], convdb.Get)
+		err = vRoot.Insert(balanceKey[:], balance[:], convdb.Get)
+		if err != nil {
+			fmt.Printf("%x %x\n", versionkey, balanceKey)
+			panic(err)
+		}
 		var nonceKey [32]byte
 		copy(nonceKey[:31], versionkey[:31])
 		nonceKey[31] = 2
-		vRoot.Insert(nonceKey[:], nonce[:], convdb.Get)
+		err = vRoot.Insert(nonceKey[:], nonce[:], convdb.Get)
+		if err != nil {
+			panic(err)
+		}
 		var shakey [32]byte
 		copy(shakey[:31], versionkey[:31])
 		shakey[31] = 3
-		vRoot.Insert(shakey[:], acc.CodeHash, convdb.Get)
+		err = vRoot.Insert(shakey[:], acc.CodeHash, convdb.Get)
+		if err != nil {
+			panic(err)
+		}
 		var sizekey [32]byte
 		copy(sizekey[:31], versionkey[:31])
 		sizekey[31] = 3
@@ -728,14 +741,24 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			for i, chunk := range chunks {
 				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint256.NewInt(uint64(i)))
-				vRoot.Insert(chunkkey, chunk[:], convdb.Get)
+				err = vRoot.Insert(chunkkey, chunk[:], convdb.Get)
+
+				if err != nil {
+					panic(err)
+				}
 			}
 			var size [32]byte
 			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
-			vRoot.Insert(sizekey[:], size[:], convdb.Get)
+			err = vRoot.Insert(sizekey[:], size[:], convdb.Get)
+			if err != nil {
+				panic(err)
+			}
 		} else {
 			// hack: because version is also 0, use it as the code size
-			vRoot.Insert(sizekey[:], version[:], convdb.Get)
+			err = vRoot.Insert(sizekey[:], version[:], convdb.Get)
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		// Save every slot into the tree
@@ -768,7 +791,6 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 		}
 
-		vRoot.(*verkle.InternalNode).FlushStem(versionkey[:31], saveverkle)
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
