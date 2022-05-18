@@ -712,6 +712,12 @@ func convertToVerkle(ctx *cli.Context) error {
 		
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
+			var (
+				laststem [31]byte
+				values = make([][]byte, 256)
+			)
+			copy(laststem[:], stem)
+
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
 			chunks, err := trie.ChunkifyCode(code)
 			if err != nil {
@@ -725,13 +731,23 @@ func convertToVerkle(ctx *cli.Context) error {
 					continue
 				}
 
-				// Otherwise, store it in the tree
-				// TODO - also use stem insertion here for better
-				// performance.
-				err = vRoot.Insert(chunkkey, chunk[:], convdb.Get)
+				// if the chunk belongs to the same group as the previous
+				// one, add it to the list of values to be inserted in one
+				// go.
+				if bytes.Equal(laststem[:], chunkkey[:31]) {
+					values[chunkkey[31]] = chunk[:]
+					continue
+				}
+
+				// Otherwise, store the previous group in the tree with a
+				// stem insertion.
+				err = vRoot.(*verkle.InternalNode).InsertStem(laststem[:], values, convdb.Get)
 				if err != nil {
 					panic(err)
 				}
+				values = make([][]byte, 256)
+				values[chunkkey[31]] = chunk[:]
+				copy(laststem[:], chunkkey[:31])
 			}
 
 			// Write the code size in the account header group
