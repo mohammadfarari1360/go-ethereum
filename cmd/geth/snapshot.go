@@ -695,43 +695,21 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 
 		// Store the basic account data
-		var nonce, balance, version [32]byte
+		var (
+			nonce, balance, version [32]byte
+			newValues = make([][]byte, 256)
+		)
+		newValues[0] = version[:]
+		newValues[1] = balance[:]
+		newValues[2] = nonce[:]
+		newValues[4] = version[:]	// memory-saving trick: by default, an account has 0 size
 		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
 		for i, b := range acc.Balance.Bytes() {
 			balance[len(acc.Balance.Bytes())-1-i] = b
 		}
 		// XXX use preimages, accIter is the hash of the address
-		versionkey := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())
-		err = vRoot.Insert(versionkey, version[:], convdb.Get)
-		if err != nil {
-			panic(err)
-		}
-		var balanceKey [32]byte
-		copy(balanceKey[:31], versionkey[:31])
-		balanceKey[31] = 1
-		err = vRoot.Insert(balanceKey[:], balance[:], convdb.Get)
-		if err != nil {
-			fmt.Printf("%x %x\n", versionkey, balanceKey)
-			panic(err)
-		}
-		var nonceKey [32]byte
-		copy(nonceKey[:31], versionkey[:31])
-		nonceKey[31] = 2
-		err = vRoot.Insert(nonceKey[:], nonce[:], convdb.Get)
-		if err != nil {
-			panic(err)
-		}
-		var shakey [32]byte
-		copy(shakey[:31], versionkey[:31])
-		shakey[31] = 3
-		err = vRoot.Insert(shakey[:], acc.CodeHash, convdb.Get)
-		if err != nil {
-			panic(err)
-		}
-		var sizekey [32]byte
-		copy(sizekey[:31], versionkey[:31])
-		sizekey[31] = 3
-
+		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
+		
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
@@ -741,24 +719,25 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			for i, chunk := range chunks {
 				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint256.NewInt(uint64(i)))
-				err = vRoot.Insert(chunkkey, chunk[:], convdb.Get)
+				// if the chunk belongs to the header group, store it there
+				if bytes.Equal(chunkkey[:31], stem) {
+					newValues[int(chunkkey[31])] = chunk[:]
+					continue
+				}
 
+				// Otherwise, store it in the tree
+				// TODO - also use stem insertion here for better
+				// performance.
+				err = vRoot.Insert(chunkkey, chunk[:], convdb.Get)
 				if err != nil {
 					panic(err)
 				}
 			}
+
+			// Write the code size in the account header group
 			var size [32]byte
+			newValues[4] = size[:]
 			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
-			err = vRoot.Insert(sizekey[:], size[:], convdb.Get)
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			// hack: because version is also 0, use it as the code size
-			err = vRoot.Insert(sizekey[:], version[:], convdb.Get)
-			if err != nil {
-				panic(err)
-			}
 		}
 
 		// Save every slot into the tree
@@ -771,23 +750,37 @@ func convertToVerkle(ctx *cli.Context) error {
 			defer storageIt.Release()
 			for storageIt.Next() {
 				slotkey := trieUtils.GetTreeKeyStorageSlot(accIt.Hash().Bytes(), uint256.NewInt(0).SetBytes(storageIt.Hash().Bytes()))
+
 				var value [32]byte
 				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
+
+				// if the slot belongs to the header group, store it there
+				if bytes.Equal(slotkey[:31], stem) {
+					newValues[int(slotkey[31])] = value[:]
+					continue
+				}
+
 				// XXX use preimages, accIter is the hash of the address
 				err = vRoot.Insert(slotkey, value[:], convdb.Get)
 				if err != nil {
 					panic(err)
 				}
 
-				// Pace down if memory usage becomes very high
+				/* Pace down if memory usage becomes very high
 				v, _ := mem.VirtualMemory()
 				if v.UsedPercent >= 85.0 {
-					time.Sleep(10 * time.Second)
-				}
+				}*/
 			}
 			if storageIt.Error() != nil {
 				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIt.Error())
 				return storageIt.Error()
+			}
+		
+			// Finish with storing the complete account header group
+			// inside the tree.
+			err = vRoot.(*verkle.InternalNode).InsertStem(stem, newValues, convdb.Get)
+			if err != nil {
+				panic(err)
 			}
 		}
 
