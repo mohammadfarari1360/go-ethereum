@@ -127,8 +127,6 @@ func convertToVerkle(ctx *cli.Context) error {
 		wg.Done()
 	}()
 
-	defer close(kvCh)
-
 	//vRoot := verkle.New()
 	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, root, false, false, false)
 	if err != nil {
@@ -139,11 +137,6 @@ func convertToVerkle(ctx *cli.Context) error {
 		return err
 	}
 	defer accIt.Release()
-
-	// Loop over and over the tree and flush everything that is deeper
-	// than 2 nodes.
-	done := make(chan struct{})
-	defer func() { done <- struct{}{} }()
 
 	// Process all accounts sequentially
 	for accIt.Next() {
@@ -269,6 +262,7 @@ func convertToVerkle(ctx *cli.Context) error {
 		log.Error("Failed to compute commitment", "root", root, "error", accIt.Error())
 		return accIt.Error()
 	}
+	close(kvCh)
 	wg.Wait()
 	log.Info("Disk dump ", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
