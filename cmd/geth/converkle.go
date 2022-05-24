@@ -37,7 +37,6 @@ import (
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
 	"gopkg.in/urfave/cli.v1"
-	"reflect"
 	"unsafe"
 )
 
@@ -53,7 +52,7 @@ type Index struct {
 	Size   uint32
 }
 
-var IdxSize = unsafe.Sizeof(Index{})
+var IdxSize = int(unsafe.Sizeof(Index{}))
 
 // dumpToDisk writes elements from the given chan to file dumps.
 func dumpToDisk(elemCh chan *group) error {
