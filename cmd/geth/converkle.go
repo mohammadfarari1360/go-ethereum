@@ -75,7 +75,7 @@ func dumpToDisk(elemCh chan *group) error {
 			if err != nil {
 				return err
 			}
-			fi, err = os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+			fi, err = os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
 			if err != nil {
 				return err
 			}
