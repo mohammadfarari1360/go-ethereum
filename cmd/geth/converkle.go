@@ -39,48 +39,64 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
+// group represents a piece of data to be stored in the verkle tree.
 type group struct {
 	stem   []byte
 	values [][]byte
 }
 
+// dumpToDisk writes elements from the given chan to file dumps.
 func dumpToDisk(elemCh chan *group) error {
-	id := 0
-	size := 0
-	fv, err := os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
+	var (
+		id        = 0
+		dataSize  = 0
+		indexSize = 0
+		dataFile  *os.File
+		indexFile *os.File
+		err       error
+	)
+	if dataFile, err = os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err != nil {
 		return err
 	}
-	log.Info("Opened dumpfile", "name", fv.Name())
-	fi, err := os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
+	if indexFile, err = os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err != nil {
+		dataFile.Close()
 		return err
 	}
+	log.Info("Opened files", "data", dataFile.Name(), "index", indexFile.Name())
 
 	for elem := range elemCh {
-		fi.Write(elem.stem)
-		var sizebytes [8]byte
-		binary.LittleEndian.PutUint64(sizebytes[:], uint64(size))
-		fi.Write(sizebytes[:])
-		size += len(payload)
-		fv.Write(payload)
-		if size > 2*1024*1024*1024 {
-			fv.Close()
-			fi.Close()
+		// always 31 bytes (?)
+		if n, err := indexFile.Write(elem.stem); err != nil {
+			return err
+		} else {
+			indexSize += n
+		}
+		// 8 bytes
+		if err := binary.Write(indexFile, binary.LittleEndian, uint64(dataSize)); err != nil {
+			return err
+		} else {
+			indexSize += 8
+		}
+		if payload, err := rlp.EncodeToBytes(elem.values); err != nil {
+			return err
+		} else if n, err := dataFile.Write(payload); err != nil {
+			return err
+		} else {
+			dataSize += n
+		}
+		if indexSize > 2*1024*1024*1024 {
 			id += 1
-			log.Info("Opening dumpfile", "name", fv.Name())
-			fv, err = os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
-			if err != nil {
+			indexSize = 0
+			indexFile.Close()
+			if indexFile, err = os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err != nil {
+				dataFile.Close()
 				return err
 			}
-			fi, err = os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
-			if err != nil {
-				return err
-			}
-			log.Info("Opened dumpfile", "name", fv.Name())
+			log.Info("Opened files", "data", dataFile.Name(), "index", indexFile.Name())
 		}
 	}
-	return fv.Close()
+	dataFile.Close()
+	return indexFile.Close()
 }
 
 func convertToVerkle(ctx *cli.Context) error {
@@ -135,15 +151,6 @@ func convertToVerkle(ctx *cli.Context) error {
 	}
 	defer accIt.Release()
 
-	store := func(k, v []byte) {
-		key := make([]byte, 32)
-		copy(key, k)
-		value := make([]byte, 32)
-		copy(value, v[:])
-
-		kvCh <- &kv{key, value}
-	}
-
 	// Process all accounts sequentially
 	for accIt.Next() {
 		accounts += 1
@@ -155,7 +162,8 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Store the basic account data
 		var (
-			nonce, balance, version, codeSize [32]byte
+			nonce, balance, codeSize [32]byte
+			newValues                = make([][]byte, 256)
 		)
 		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
 		bal := acc.Balance.Bytes()
@@ -205,7 +213,6 @@ func convertToVerkle(ctx *cli.Context) error {
 				copy(laststem[:], chunkkey[:31])
 			}
 		}
-		store(append(stem[:31], 4), codeSize[:])
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
 			var (
