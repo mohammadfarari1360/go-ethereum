@@ -32,54 +32,55 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
 	"gopkg.in/urfave/cli.v1"
 )
 
-type kv struct {
-	key []byte
-	val []byte
+type group struct {
+	stem   []byte
+	values [][]byte
 }
 
-func dumpToDisk(elemCh chan *kv) error {
+func dumpToDisk(elemCh chan *group) error {
 	id := 0
 	size := 0
-	f, err := os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+	fv, err := os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
-	log.Info("Opened dumpfile", "name", f.Name())
+	log.Info("Opened dumpfile", "name", fv.Name())
+	fi, err := os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
 
 	for elem := range elemCh {
-		//data := fmt.Sprintf("klen %d %x\nvlen %d %x\n", len(elem.key), elem.key, len(elem.val), elem.val)
-		//fmt.Printf(data)
-		if n, err := f.Write([]byte(elem.key)); err != nil {
-			f.Close()
-			return err
-		} else {
-			size += n
-		}
-		if n, err := f.Write([]byte(elem.val)); err != nil {
-			f.Close()
-			return err
-		} else {
-			size += n
-		}
-
+		fi.Write(elem.stem)
+		var sizebytes [8]byte
+		binary.LittleEndian.PutUint64(sizebytes[:], uint64(size))
+		fi.Write(sizebytes[:])
+		size += len(payload)
+		fv.Write(payload)
 		if size > 2*1024*1024*1024 {
-			f.Close()
+			fv.Close()
+			fi.Close()
 			id += 1
-			log.Info("Opened dumpfile", "name", f.Name())
-			f, err = os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+			log.Info("Opening dumpfile", "name", fv.Name())
+			fv, err = os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
 			if err != nil {
 				return err
 			}
-			log.Info("Opened dumpfile", "name", f.Name())
+			fi, err = os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+			if err != nil {
+				return err
+			}
+			log.Info("Opened dumpfile", "name", fv.Name())
 		}
 	}
-	return f.Close()
+	return fv.Close()
 }
 
 func convertToVerkle(ctx *cli.Context) error {
@@ -116,7 +117,7 @@ func convertToVerkle(ctx *cli.Context) error {
 		lastReport time.Time
 		start      = time.Now()
 		wg         sync.WaitGroup
-		kvCh       = make(chan *kv, 1000)
+		kvCh       = make(chan *group, 1000)
 	)
 	wg.Add(1)
 	go func() {
@@ -163,13 +164,14 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 		// XXX use preimages, accIter is the hash of the address
 		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
-
-		store(append(stem[:31], 0), version[:])
-		store(append(stem[:31], 1), balance[:])
-		store(append(stem[:31], 2), nonce[:])
-
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
+			var (
+				laststem [31]byte
+				values   = make([][]byte, 256)
+			)
+			copy(laststem[:], stem)
+
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
 			binary.LittleEndian.PutUint64(codeSize[:8], uint64(len(code)))
 
@@ -179,12 +181,39 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			for i, chunk := range chunks {
 				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint256.NewInt(uint64(i)))
-				store(chunkkey, chunk[:])
+
+				// if the chunk belongs to the header group, store it there
+				if bytes.Equal(chunkkey[:31], stem) {
+					newValues[int(chunkkey[31])] = chunk[:]
+					continue
+				}
+
+				// if the chunk belongs to the same group as the previous
+				// one, add it to the list of values to be inserted in one
+				// go.
+				if bytes.Equal(laststem[:], chunkkey[:31]) {
+					values[chunkkey[31]] = chunk[:]
+					continue
+				}
+
+				// Otherwise, store the previous group in the tree with a
+				// stem insertion.
+				kvCh <- &group{laststem[:], values}
+
+				values = make([][]byte, 256)
+				values[chunkkey[31]] = chunk[:]
+				copy(laststem[:], chunkkey[:31])
 			}
 		}
 		store(append(stem[:31], 4), codeSize[:])
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
+			var (
+				laststem [31]byte
+				values   = make([][]byte, 256)
+			)
+			copy(laststem[:], stem)
+
 			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
@@ -194,14 +223,20 @@ func convertToVerkle(ctx *cli.Context) error {
 				slotkey := trieUtils.GetTreeKeyStorageSlot(accIt.Hash().Bytes(), uint256.NewInt(0).SetBytes(storageIt.Hash().Bytes()))
 				var value [32]byte
 				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
+
 				// if the slot belongs to the header group, store it there
-				//if bytes.Equal(slotkey[:31], stem) {
-				//	newValues[int(slotkey[31])] = value[:]
-				//	continue
-				//}
-				// XXX use preimages, accIter is the hash of the address
-				//err = vRoot.Insert(slotkey, value[:], convdb.Get)
-				store(slotkey, value[:])
+				if bytes.Equal(slotkey[:31], stem) {
+					newValues[int(slotkey[31])] = value[:]
+					continue
+				}
+
+				// if the slot belongs to the same group as the previous
+				// one, add it to the current group of values.
+				if bytes.Equal(laststem[:], slotkey[:31]) {
+					values[slotkey[31]] = value[:]
+					continue
+				}
+				kvCh <- &group{laststem[:], values[:]}
 			}
 
 			if storageIt.Error() != nil {
@@ -210,6 +245,9 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			storageIt.Release()
 
+			// Finish with storing the complete account header group
+			// inside the tree.
+			kvCh <- &group{stem, newValues}
 		}
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
