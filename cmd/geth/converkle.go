@@ -156,15 +156,15 @@ func convertToVerkle(ctx *cli.Context) error {
 			balance[len(acc.Balance.Bytes())-1-i] = b
 		}
 		// XXX use preimages, accIter is the hash of the address
-		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
+		//stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
 
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
 			var (
-				laststem [31]byte
-				values   = make([][]byte, 256)
+			//laststem [31]byte
+			//values   = make([][]byte, 256)
 			)
-			copy(laststem[:], stem)
+			//copy(laststem[:], stem)
 
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
 			chunks, err := trie.ChunkifyCode(code)
@@ -173,19 +173,21 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			for i, chunk := range chunks {
 				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint256.NewInt(uint64(i)))
+				kvCh <- &kv{chunkkey, chunk[:]}
+
 				// if the chunk belongs to the header group, store it there
-				if bytes.Equal(chunkkey[:31], stem) {
-					newValues[int(chunkkey[31])] = chunk[:]
-					continue
-				}
+				//if bytes.Equal(chunkkey[:31], stem) {
+				//	newValues[int(chunkkey[31])] = chunk[:]
+				//	continue
+				//}
 
 				// if the chunk belongs to the same group as the previous
 				// one, add it to the list of values to be inserted in one
 				// go.
-				if bytes.Equal(laststem[:], chunkkey[:31]) {
-					values[chunkkey[31]] = chunk[:]
-					continue
-				}
+				//if bytes.Equal(laststem[:], chunkkey[:31]) {
+				//	values[chunkkey[31]] = chunk[:]
+				//	continue
+				//}
 
 				// Otherwise, store the previous group in the tree with a
 				// stem insertion.
@@ -195,9 +197,9 @@ func convertToVerkle(ctx *cli.Context) error {
 				//}
 				// TODO, ship it off to disk
 
-				values = make([][]byte, 256)
-				values[chunkkey[31]] = chunk[:]
-				copy(laststem[:], chunkkey[:31])
+				//values = make([][]byte, 256)
+				//values[chunkkey[31]] = chunk[:]
+				//copy(laststem[:], chunkkey[:31])
 			}
 
 			// Write the code size in the account header group
@@ -218,10 +220,10 @@ func convertToVerkle(ctx *cli.Context) error {
 				var value [32]byte
 				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
 				// if the slot belongs to the header group, store it there
-				if bytes.Equal(slotkey[:31], stem) {
-					newValues[int(slotkey[31])] = value[:]
-					continue
-				}
+				//if bytes.Equal(slotkey[:31], stem) {
+				//	newValues[int(slotkey[31])] = value[:]
+				//	continue
+				//}
 				// XXX use preimages, accIter is the hash of the address
 				//err = vRoot.Insert(slotkey, value[:], convdb.Get)
 				kvCh <- &kv{slotkey, value[:]}
@@ -237,10 +239,10 @@ func convertToVerkle(ctx *cli.Context) error {
 			// inside the tree.
 			//err = vRoot.(*verkle.InternalNode).InsertStem(stem, newValues, convdb.Get)
 			// TODO, ship it off to disk
-
-			if err != nil {
-				panic(err)
-			}
+			//kvCh <- &kv{stem, newValues}
+			//if err != nil {
+			//	panic(err)
+			//}
 		}
 
 		if time.Since(lastReport) > time.Second*8 {
@@ -252,6 +254,7 @@ func convertToVerkle(ctx *cli.Context) error {
 		log.Error("Failed to compute commitment", "root", root, "error", accIt.Error())
 		return accIt.Error()
 	}
+	wg.Wait()
 	log.Info("Disk dump ", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
