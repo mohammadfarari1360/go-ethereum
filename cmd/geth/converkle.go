@@ -51,13 +51,21 @@ func dumpToDisk(elemCh chan *kv) error {
 	log.Info("Opened dumpfile", "name", f.Name())
 
 	for elem := range elemCh {
-		data := fmt.Sprintf("klen %d %x\nvlen %d %x\n", len(elem.key), elem.key, len(elem.val), elem.val)
-		n, err := f.Write([]byte(data))
-		if err != nil {
+		//data := fmt.Sprintf("klen %d %x\nvlen %d %x\n", len(elem.key), elem.key, len(elem.val), elem.val)
+		//fmt.Printf(data)
+		if n, err := f.Write([]byte(elem.key)); err != nil {
 			f.Close()
 			return err
+		} else {
+			size += n
 		}
-		size += n
+		if n, err := f.Write([]byte(elem.val)); err != nil {
+			f.Close()
+			return err
+		} else {
+			size += n
+		}
+
 		if size > 2*1024*1024*1024 {
 			f.Close()
 			id += 1
@@ -114,9 +122,6 @@ func convertToVerkle(ctx *cli.Context) error {
 		wg.Done()
 	}()
 
-	defer close(kvCh)
-
-	//vRoot := verkle.New()
 	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, root, false, false, false)
 	if err != nil {
 		return err
@@ -127,10 +132,14 @@ func convertToVerkle(ctx *cli.Context) error {
 	}
 	defer accIt.Release()
 
-	// Loop over and over the tree and flush everything that is deeper
-	// than 2 nodes.
-	done := make(chan struct{})
-	defer func() { done <- struct{}{} }()
+	store := func(k, v []byte) {
+		key := make([]byte, 32)
+		copy(key, k)
+		value := make([]byte, 32)
+		copy(value, v[:])
+
+		kvCh <- &kv{key, value}
+	}
 
 	// Process all accounts sequentially
 	for accIt.Next() {
@@ -143,71 +152,35 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Store the basic account data
 		var (
-			nonce, balance, version [32]byte
-			newValues               = make([][]byte, 256)
+			nonce, balance, version, codeSize [32]byte
 		)
-		newValues[0] = version[:]
-		newValues[1] = balance[:]
-		newValues[2] = nonce[:]
-		newValues[4] = version[:] // memory-saving trick: by default, an account has 0 size
 		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
-
-		for i, b := range acc.Balance.Bytes() {
-			balance[len(acc.Balance.Bytes())-1-i] = b
+		bal := acc.Balance.Bytes()
+		for i, b := range bal {
+			balance[len(bal)-1-i] = b
 		}
 		// XXX use preimages, accIter is the hash of the address
-		//stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
+		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
+
+		store(append(stem[:31], 0), version[:])
+		store(append(stem[:31], 1), balance[:])
+		store(append(stem[:31], 2), nonce[:])
 
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
-			var (
-			//laststem [31]byte
-			//values   = make([][]byte, 256)
-			)
-			//copy(laststem[:], stem)
-
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+			binary.LittleEndian.PutUint64(codeSize[:8], uint64(len(code)))
+
 			chunks, err := trie.ChunkifyCode(code)
 			if err != nil {
 				panic(err)
 			}
 			for i, chunk := range chunks {
 				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint256.NewInt(uint64(i)))
-				kvCh <- &kv{chunkkey, chunk[:]}
-
-				// if the chunk belongs to the header group, store it there
-				//if bytes.Equal(chunkkey[:31], stem) {
-				//	newValues[int(chunkkey[31])] = chunk[:]
-				//	continue
-				//}
-
-				// if the chunk belongs to the same group as the previous
-				// one, add it to the list of values to be inserted in one
-				// go.
-				//if bytes.Equal(laststem[:], chunkkey[:31]) {
-				//	values[chunkkey[31]] = chunk[:]
-				//	continue
-				//}
-
-				// Otherwise, store the previous group in the tree with a
-				// stem insertion.
-				//err = vRoot.(*verkle.InternalNode).InsertStem(laststem[:], values, convdb.Get)
-				//if err != nil {
-				//	panic(err)
-				//}
-				// TODO, ship it off to disk
-
-				//values = make([][]byte, 256)
-				//values[chunkkey[31]] = chunk[:]
-				//copy(laststem[:], chunkkey[:31])
+				store(chunkkey, chunk[:])
 			}
-
-			// Write the code size in the account header group
-			var size [32]byte
-			newValues[4] = size[:]
-			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
 		}
-
+		store(append(stem[:31], 4), codeSize[:])
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
 			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
@@ -226,7 +199,7 @@ func convertToVerkle(ctx *cli.Context) error {
 				//}
 				// XXX use preimages, accIter is the hash of the address
 				//err = vRoot.Insert(slotkey, value[:], convdb.Get)
-				kvCh <- &kv{slotkey, value[:]}
+				store(slotkey, value[:])
 			}
 
 			if storageIt.Error() != nil {
@@ -235,16 +208,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			storageIt.Release()
 
-			// Finish with storing the complete account header group
-			// inside the tree.
-			//err = vRoot.(*verkle.InternalNode).InsertStem(stem, newValues, convdb.Get)
-			// TODO, ship it off to disk
-			//kvCh <- &kv{stem, newValues}
-			//if err != nil {
-			//	panic(err)
-			//}
 		}
-
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
@@ -254,7 +218,8 @@ func convertToVerkle(ctx *cli.Context) error {
 		log.Error("Failed to compute commitment", "root", root, "error", accIt.Error())
 		return accIt.Error()
 	}
-	wg.Wait()
 	log.Info("Disk dump ", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+	close(kvCh)
+	wg.Wait()
 	return nil
 }
