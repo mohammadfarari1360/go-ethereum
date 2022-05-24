@@ -37,23 +37,33 @@ import (
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
 	"gopkg.in/urfave/cli.v1"
+	"reflect"
+	"unsafe"
 )
 
 // group represents a piece of data to be stored in the verkle tree.
 type group struct {
-	stem   []byte
+	stem   [31]byte
 	values [][]byte
 }
+
+type Index struct {
+	Stem   [31]byte
+	Offset uint64
+	Size   uint32
+}
+
+var IdxSize = unsafe.Sizeof(Index{})
 
 // dumpToDisk writes elements from the given chan to file dumps.
 func dumpToDisk(elemCh chan *group) error {
 	var (
-		id        = 0
-		dataSize  = 0
-		indexSize = 0
-		dataFile  *os.File
-		indexFile *os.File
-		err       error
+		id         = 0
+		dataOffset = uint64(0)
+		indexSize  = 0
+		dataFile   *os.File
+		indexFile  *os.File
+		err        error
 	)
 	if dataFile, err = os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err != nil {
 		return err
@@ -65,24 +75,22 @@ func dumpToDisk(elemCh chan *group) error {
 	log.Info("Opened files", "data", dataFile.Name(), "index", indexFile.Name())
 
 	for elem := range elemCh {
-		// always 31 bytes (?)
-		if n, err := indexFile.Write(elem.stem); err != nil {
-			return err
-		} else {
-			indexSize += n
-		}
-		// 8 bytes
-		if err := binary.Write(indexFile, binary.LittleEndian, uint64(dataSize)); err != nil {
-			return err
-		} else {
-			indexSize += 8
+		idx := Index{
+			Stem:   elem.stem,
+			Offset: dataOffset,
 		}
 		if payload, err := rlp.EncodeToBytes(elem.values); err != nil {
 			return err
 		} else if n, err := dataFile.Write(payload); err != nil {
 			return err
 		} else {
-			dataSize += n
+			idx.Size = uint32(n)
+			dataOffset += uint64(n)
+		}
+		if err := binary.Write(indexFile, binary.LittleEndian, &idx); err != nil {
+			return err
+		} else {
+			indexSize += IdxSize // 43
 		}
 		if indexSize > 2*1024*1024*1024 {
 			id += 1
@@ -133,11 +141,13 @@ func convertToVerkle(ctx *cli.Context) error {
 		lastReport time.Time
 		start      = time.Now()
 		wg         sync.WaitGroup
-		kvCh       = make(chan *group, 1000)
+		kvCh       = make(chan *group, 1)
 	)
 	wg.Add(1)
 	go func() {
-		dumpToDisk(kvCh)
+		if err := dumpToDisk(kvCh); err != nil {
+			panic(err)
+		}
 		wg.Done()
 	}()
 
@@ -210,7 +220,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 				// Otherwise, store the previous group in the tree with a
 				// stem insertion.
-				kvCh <- &group{laststem[:], values}
+				kvCh <- &group{laststem, values}
 
 				values = make([][]byte, 256)
 				values[chunkkey[31]] = chunk[:]
@@ -248,7 +258,7 @@ func convertToVerkle(ctx *cli.Context) error {
 					values[slotkey[31]] = value[:]
 					continue
 				}
-				kvCh <- &group{laststem[:], values[:]}
+				kvCh <- &group{laststem, values[:]}
 			}
 
 			if storageIt.Error() != nil {
@@ -256,11 +266,12 @@ func convertToVerkle(ctx *cli.Context) error {
 				return storageIt.Error()
 			}
 			storageIt.Release()
-
-			// Finish with storing the complete account header group
-			// inside the tree.
-			kvCh <- &group{stem, newValues}
 		}
+		// Finish with storing the complete account header group
+		// inside the tree.
+		var st [31]byte
+		copy(st[:], stem)
+		kvCh <- &group{st, newValues}
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
@@ -276,16 +287,19 @@ func convertToVerkle(ctx *cli.Context) error {
 	return nil
 }
 
+const (
+	keySize  = 31
+	elemSize = keySize + 8 + 4
+)
+
 type dataSort []byte
 
 func (d dataSort) Len() int {
-	return len(d) / 64
+	return len(d) / elemSize
 }
-
 func (d dataSort) Less(i, j int) bool {
-
-	keyA := d[i*64 : i*64+32]
-	keyB := d[j*64 : j*64+32]
+	keyA := d[i*elemSize : i*elemSize+keySize]
+	keyB := d[j*elemSize : j*elemSize+keySize]
 	if bytes.Compare(keyA, keyB) == -1 {
 		return true
 	}
@@ -293,48 +307,55 @@ func (d dataSort) Less(i, j int) bool {
 }
 
 func (d dataSort) Swap(i, j int) {
-	var tmp [64]byte
-	copy(tmp[:], d[i*64:(i+1)*64])
-	copy(d[i*64:(i+1)*64], d[j*64:(j+1)*64])
-	copy(d[j*64:(j+1)*64], tmp[:])
+	var tmp [elemSize]byte
+	copy(tmp[:], d[i*elemSize:(i+1)*elemSize])
+	copy(d[i*elemSize:(i+1)*elemSize], d[j*elemSize:(j+1)*elemSize])
+	copy(d[j*elemSize:(j+1)*elemSize], tmp[:])
 }
 
-// doFileSorting is a DUMMY DEBUG method which just blindly writes
-// random data into 2GB-sized files, and then sorts it.
+// doFileSorting sorts the index file.
 func doFileSorting(ctx *cli.Context) error {
-	// Create some files.
-	log.Info("Writing dummy files")
-	data := make([]byte, 2*1024*1024*1024)
-	for id := 0; id < 3; id++ {
-		fName := fmt.Sprintf("dump-%02d.verkle", id)
-		if _, err := rand.Read(data); err != nil {
-			return err
+
+	indexName := fmt.Sprintf("index-%02d.verkle", 0)
+	if _, err := os.Stat(indexName); err != nil {
+		// Create some files.
+		log.Info("Writing dummy files")
+		data := make([]byte, 500000*unsafe.Sizeof(Index{}))
+		for id := 0; id < 3; id++ {
+			fName := fmt.Sprintf("dump-%02d.verkle", id)
+			if _, err := rand.Read(data); err != nil {
+				return err
+			}
+			if err := os.WriteFile(fName, data, 0600); err != nil {
+				return err
+			}
 		}
-		if err := os.WriteFile(fName, data, 0600); err != nil {
-			return err
-		}
+		log.Info("Wrote files, now for sorting them")
 	}
-	log.Info("Wrote files, now for sorting them")
+	//else {
+	// File(s) exist, use those
+	//}
+
 	return sortFiles()
 }
 
 func sortFiles() error {
 	for id := 0; ; id++ {
-		fName := fmt.Sprintf("dump-%02d.verkle", id)
-		if _, err := os.Stat(fName); err != nil {
-			break
+		idxFile := fmt.Sprintf("index-%02d.verkle", id)
+		if _, err := os.Stat(idxFile); err != nil {
+			return err
 		}
-		log.Info("Processing dumpfile", "name", fName)
-		data, err := os.ReadFile(fName)
+		log.Info("Processing indexfile", "name", idxFile)
+		data, err := os.ReadFile(idxFile)
 		if err != nil {
 			return err
 		}
-		log.Info("Read file", "name", fName)
+		log.Info("Read file", "name", idxFile)
 		// Sort the data
 		sort.Sort(dataSort(data))
-		log.Info("Sorted file", "name", fName)
-		os.WriteFile(fName, data, 0600)
-		log.Info("Wrote file", "name", fName)
+		log.Info("Sorted file", "name", idxFile)
+		os.WriteFile(idxFile, data, 0600)
+		log.Info("Wrote file", "name", idxFile)
 	}
 	return nil
 }
