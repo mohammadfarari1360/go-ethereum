@@ -165,15 +165,15 @@ func convertToVerkle(ctx *cli.Context) error {
 			nonce, balance, version, codeSize [32]byte
 			newValues                         = make([][]byte, 256)
 		)
+		newValues[0] = version[:]
+		newValues[1] = balance[:]
+		newValues[2] = nonce[:]
+		newValues[4] = codeSize[:]
 		bal := acc.Balance.Bytes()
 		for i, b := range bal {
 			balance[len(bal)-1-i] = b
 		}
 		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
-		newValues[0] = version[:]
-		newValues[1] = balance[:]
-		newValues[2] = nonce[:]
-		newValues[4] = codeSize[:]
 
 		// XXX use preimages, accIter is the hash of the address
 		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
@@ -185,8 +185,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			)
 			copy(laststem[:], stem)
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
-			binary.LittleEndian.PutUint64(codeSize[:8], uint64(len(code)))
-
+			binary.LittleEndian.PutUint64(newValues[4][:8], uint64(len(code)))
 			chunks, err := trie.ChunkifyCode(code)
 			if err != nil {
 				panic(err)
