@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"bufio"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -54,24 +55,41 @@ type Index struct {
 
 var IdxSize = int(unsafe.Sizeof(Index{}))
 
+type writeBuf struct {
+	file *os.File
+	w    *bufio.Writer
+}
+
+func (w *writeBuf) Close() error {
+	w.w.Flush()
+	return w.file.Close()
+}
+
 // dumpToDisk writes elements from the given chan to file dumps.
 func dumpToDisk(elemCh chan *group) error {
 	var (
 		id         = 0
 		dataOffset = uint64(0)
 		indexSize  = 0
-		dataFile   *os.File
-		indexFile  *os.File
+		dataFile   *writeBuf
+		indexFile  *writeBuf
 		err        error
 	)
-	if dataFile, err = os.OpenFile(fmt.Sprintf("dump-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err != nil {
+	reopen := func(fname string) (*writeBuf, error) {
+		f, err := os.OpenFile(fname, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			return nil, err
+		}
+		return &writeBuf{f, bufio.NewWriter(f)}, nil
+	}
+	if dataFile, err = reopen(fmt.Sprintf("dump-%02d.verkle", id)); err != nil {
 		return err
 	}
-	if indexFile, err = os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err != nil {
+	if indexFile, err = reopen(fmt.Sprintf("index-%02d.verkle", id)); err != nil {
 		dataFile.Close()
 		return err
 	}
-	log.Info("Opened files", "data", dataFile.Name(), "index", indexFile.Name())
+	log.Info("Opened files", "data", dataFile.file.Name(), "index", indexFile.file.Name())
 
 	for elem := range elemCh {
 		idx := Index{
@@ -80,13 +98,13 @@ func dumpToDisk(elemCh chan *group) error {
 		}
 		if payload, err := rlp.EncodeToBytes(elem.values); err != nil {
 			return err
-		} else if n, err := dataFile.Write(payload); err != nil {
+		} else if n, err := dataFile.w.Write(payload); err != nil {
 			return err
 		} else {
 			idx.Size = uint32(n)
 			dataOffset += uint64(n)
 		}
-		if err := binary.Write(indexFile, binary.LittleEndian, &idx); err != nil {
+		if err := binary.Write(indexFile.w, binary.LittleEndian, &idx); err != nil {
 			return err
 		} else {
 			indexSize += IdxSize // 43
@@ -95,11 +113,11 @@ func dumpToDisk(elemCh chan *group) error {
 			id += 1
 			indexSize = 0
 			indexFile.Close()
-			if indexFile, err = os.OpenFile(fmt.Sprintf("index-%02d.verkle", id), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err != nil {
+			if indexFile, err = reopen(fmt.Sprintf("index-%02d.verkle", id)); err != nil {
 				dataFile.Close()
 				return err
 			}
-			log.Info("Opened files", "data", dataFile.Name(), "index", indexFile.Name())
+			log.Info("Opened files", "data", dataFile.file.Name(), "index", indexFile.file.Name())
 		}
 	}
 	dataFile.Close()
@@ -140,7 +158,7 @@ func convertToVerkle(ctx *cli.Context) error {
 		lastReport time.Time
 		start      = time.Now()
 		wg         sync.WaitGroup
-		kvCh       = make(chan *group, 1)
+		kvCh       = make(chan *group, 100)
 	)
 	wg.Add(1)
 	go func() {
@@ -162,6 +180,10 @@ func convertToVerkle(ctx *cli.Context) error {
 
 	// Process all accounts sequentially
 	for accIt.Next() {
+		if time.Since(lastReport) > time.Second*8 {
+			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+			lastReport = time.Now()
+		}
 		accounts += 1
 		acc, err := snapshot.FullAccount(accIt.Account())
 		if err != nil {
@@ -234,13 +256,16 @@ func convertToVerkle(ctx *cli.Context) error {
 				values   = make([][]byte, 256)
 			)
 			copy(laststem[:], stem)
-
 			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
 				return err
 			}
 			for storageIt.Next() {
+				if time.Since(lastReport) > time.Second*8 {
+					log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+					lastReport = time.Now()
+				}
 				slotkey := trieUtils.GetTreeKeyStorageSlot(accIt.Hash().Bytes(), uint256.NewInt(0).SetBytes(storageIt.Hash().Bytes()))
 				var value [32]byte
 				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
@@ -271,10 +296,6 @@ func convertToVerkle(ctx *cli.Context) error {
 		var st [31]byte
 		copy(st[:], stem)
 		kvCh <- &group{st, newValues}
-		if time.Since(lastReport) > time.Second*8 {
-			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
-			lastReport = time.Now()
-		}
 	}
 	if accIt.Error() != nil {
 		log.Error("Failed to compute commitment", "root", root, "error", accIt.Error())
