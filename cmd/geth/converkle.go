@@ -162,14 +162,19 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Store the basic account data
 		var (
-			nonce, balance, codeSize [32]byte
-			newValues                = make([][]byte, 256)
+			nonce, balance, version, codeSize [32]byte
+			newValues                         = make([][]byte, 256)
 		)
-		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
 		bal := acc.Balance.Bytes()
 		for i, b := range bal {
 			balance[len(bal)-1-i] = b
 		}
+		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
+		newValues[0] = version[:]
+		newValues[1] = balance[:]
+		newValues[2] = nonce[:]
+		newValues[4] = codeSize[:]
+
 		// XXX use preimages, accIter is the hash of the address
 		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
 		// Store the account code if present
@@ -179,7 +184,6 @@ func convertToVerkle(ctx *cli.Context) error {
 				values   = make([][]byte, 256)
 			)
 			copy(laststem[:], stem)
-
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
 			binary.LittleEndian.PutUint64(codeSize[:8], uint64(len(code)))
 
@@ -213,6 +217,7 @@ func convertToVerkle(ctx *cli.Context) error {
 				copy(laststem[:], chunkkey[:31])
 			}
 		}
+
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
 			var (
