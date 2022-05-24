@@ -21,7 +21,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -221,5 +223,68 @@ func convertToVerkle(ctx *cli.Context) error {
 	log.Info("Disk dump ", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 	close(kvCh)
 	wg.Wait()
+	return nil
+}
+
+type dataSort []byte
+
+func (d dataSort) Len() int {
+	return len(d) / 64
+}
+
+func (d dataSort) Less(i, j int) bool {
+
+	keyA := d[i*64 : i*64+32]
+	keyB := d[j*64 : j*64+32]
+	if bytes.Compare(keyA, keyB) == -1 {
+		return true
+	}
+	return false
+}
+
+func (d dataSort) Swap(i, j int) {
+	var tmp [64]byte
+	copy(tmp[:], d[i*64:(i+1)*64])
+	copy(d[i*64:(i+1)*64], d[j*64:(j+1)*64])
+	copy(d[j*64:(j+1)*64], tmp[:])
+}
+
+// doFileSorting is a DUMMY DEBUG method which just blindly writes
+// random data into 2GB-sized files, and then sorts it.
+func doFileSorting(ctx *cli.Context) error {
+	// Create some files.
+	log.Info("Writing dummy files")
+	data := make([]byte, 2*1024*1024*1024)
+	for id := 0; id < 3; id++ {
+		fName := fmt.Sprintf("dump-%02d.verkle", id)
+		if _, err := rand.Read(data); err != nil {
+			return err
+		}
+		if err := os.WriteFile(fName, data, 0600); err != nil {
+			return err
+		}
+	}
+	log.Info("Wrote files, now for sorting them")
+	return sortFiles()
+}
+
+func sortFiles() error {
+	for id := 0; ; id++ {
+		fName := fmt.Sprintf("dump-%02d.verkle", id)
+		if _, err := os.Stat(fName); err != nil {
+			break
+		}
+		log.Info("Processing dumpfile", "name", fName)
+		data, err := os.ReadFile(fName)
+		if err != nil {
+			return err
+		}
+		log.Info("Read file", "name", fName)
+		// Sort the data
+		sort.Sort(dataSort(data))
+		log.Info("Sorted file", "name", fName)
+		os.WriteFile(fName, data, 0600)
+		log.Info("Wrote file", "name", fName)
+	}
 	return nil
 }
