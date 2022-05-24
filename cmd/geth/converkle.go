@@ -21,7 +21,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -60,10 +62,6 @@ func dumpToDisk(elemCh chan *group) error {
 		var sizebytes [8]byte
 		binary.LittleEndian.PutUint64(sizebytes[:], uint64(size))
 		fi.Write(sizebytes[:])
-		payload, err := rlp.EncodeToBytes(elem.values)
-		if err != nil {
-			return err
-		}
 		size += len(payload)
 		fv.Write(payload)
 		if size > 2*1024*1024*1024 {
@@ -127,7 +125,6 @@ func convertToVerkle(ctx *cli.Context) error {
 		wg.Done()
 	}()
 
-	//vRoot := verkle.New()
 	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, root, false, false, false)
 	if err != nil {
 		return err
@@ -137,6 +134,15 @@ func convertToVerkle(ctx *cli.Context) error {
 		return err
 	}
 	defer accIt.Release()
+
+	store := func(k, v []byte) {
+		key := make([]byte, 32)
+		copy(key, k)
+		value := make([]byte, 32)
+		copy(value, v[:])
+
+		kvCh <- &kv{key, value}
+	}
 
 	// Process all accounts sequentially
 	for accIt.Next() {
@@ -149,21 +155,15 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Store the basic account data
 		var (
-			nonce, balance, version [32]byte
-			newValues               = make([][]byte, 256)
+			nonce, balance, version, codeSize [32]byte
 		)
-		newValues[0] = version[:]
-		newValues[1] = balance[:]
-		newValues[2] = nonce[:]
-		newValues[4] = version[:] // memory-saving trick: by default, an account has 0 size
 		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
-
-		for i, b := range acc.Balance.Bytes() {
-			balance[len(acc.Balance.Bytes())-1-i] = b
+		bal := acc.Balance.Bytes()
+		for i, b := range bal {
+			balance[len(bal)-1-i] = b
 		}
 		// XXX use preimages, accIter is the hash of the address
 		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
-
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
 			var (
@@ -173,6 +173,8 @@ func convertToVerkle(ctx *cli.Context) error {
 			copy(laststem[:], stem)
 
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+			binary.LittleEndian.PutUint64(codeSize[:8], uint64(len(code)))
+
 			chunks, err := trie.ChunkifyCode(code)
 			if err != nil {
 				panic(err)
@@ -202,13 +204,8 @@ func convertToVerkle(ctx *cli.Context) error {
 				values[chunkkey[31]] = chunk[:]
 				copy(laststem[:], chunkkey[:31])
 			}
-
-			// Write the code size in the account header group
-			var size [32]byte
-			newValues[4] = size[:]
-			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
 		}
-
+		store(append(stem[:31], 4), codeSize[:])
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
 			var (
@@ -252,7 +249,6 @@ func convertToVerkle(ctx *cli.Context) error {
 			// inside the tree.
 			kvCh <- &group{stem, newValues}
 		}
-
 		if time.Since(lastReport) > time.Second*8 {
 			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
@@ -262,8 +258,71 @@ func convertToVerkle(ctx *cli.Context) error {
 		log.Error("Failed to compute commitment", "root", root, "error", accIt.Error())
 		return accIt.Error()
 	}
+	log.Info("Disk dump ", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 	close(kvCh)
 	wg.Wait()
-	log.Info("Disk dump ", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+type dataSort []byte
+
+func (d dataSort) Len() int {
+	return len(d) / 64
+}
+
+func (d dataSort) Less(i, j int) bool {
+
+	keyA := d[i*64 : i*64+32]
+	keyB := d[j*64 : j*64+32]
+	if bytes.Compare(keyA, keyB) == -1 {
+		return true
+	}
+	return false
+}
+
+func (d dataSort) Swap(i, j int) {
+	var tmp [64]byte
+	copy(tmp[:], d[i*64:(i+1)*64])
+	copy(d[i*64:(i+1)*64], d[j*64:(j+1)*64])
+	copy(d[j*64:(j+1)*64], tmp[:])
+}
+
+// doFileSorting is a DUMMY DEBUG method which just blindly writes
+// random data into 2GB-sized files, and then sorts it.
+func doFileSorting(ctx *cli.Context) error {
+	// Create some files.
+	log.Info("Writing dummy files")
+	data := make([]byte, 2*1024*1024*1024)
+	for id := 0; id < 3; id++ {
+		fName := fmt.Sprintf("dump-%02d.verkle", id)
+		if _, err := rand.Read(data); err != nil {
+			return err
+		}
+		if err := os.WriteFile(fName, data, 0600); err != nil {
+			return err
+		}
+	}
+	log.Info("Wrote files, now for sorting them")
+	return sortFiles()
+}
+
+func sortFiles() error {
+	for id := 0; ; id++ {
+		fName := fmt.Sprintf("dump-%02d.verkle", id)
+		if _, err := os.Stat(fName); err != nil {
+			break
+		}
+		log.Info("Processing dumpfile", "name", fName)
+		data, err := os.ReadFile(fName)
+		if err != nil {
+			return err
+		}
+		log.Info("Read file", "name", fName)
+		// Sort the data
+		sort.Sort(dataSort(data))
+		log.Info("Sorted file", "name", fName)
+		os.WriteFile(fName, data, 0600)
+		log.Info("Wrote file", "name", fName)
+	}
 	return nil
 }

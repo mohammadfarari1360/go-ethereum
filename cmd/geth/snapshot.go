@@ -178,6 +178,22 @@ The argument is interpreted as the root hash. If none is provided, the latest
 block is used.
  `,
 			},
+			{
+				Name:      "sort-files",
+				Usage:     "generate some files and then sort them",
+				ArgsUsage: "<root>",
+				Action:    utils.MigrateFlags(doFileSorting),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.RopstenFlag,
+					utils.RinkebyFlag,
+					utils.GoerliFlag,
+				},
+				Description: `
+geth snapshot sort-files
+ `,
+			},
 		},
 	}
 )
