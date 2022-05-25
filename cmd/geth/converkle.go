@@ -124,6 +124,25 @@ func dumpToDisk(elemCh chan *group) error {
 	return indexFile.Close()
 }
 
+type slotHash struct {
+	slot []byte
+	hash common.Hash
+}
+
+func iterateSlots(slotCh chan *slotHash, storageIt snapshot.StorageIterator) {
+	defer storageIt.Release()
+	for storageIt.Next() {
+		slotCh <- &slotHash{
+			hash: storageIt.Hash(),
+			slot: storageIt.Slot(),
+		}
+	}
+	if storageIt.Error() != nil {
+		log.Error("Iterating storage ended on error", "error", storageIt.Error())
+	}
+	close(slotCh)
+}
+
 func convertToVerkle(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
@@ -172,29 +191,50 @@ func convertToVerkle(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	accIt, err := snaptree.AccountIterator(root, common.Hash{})
-	if err != nil {
-		return err
+	type accHash struct {
+		account snapshot.Account
+		hash    common.Hash
 	}
-	defer accIt.Release()
+	// accounts are pretty small, buffering 100 of them isn't a biggie
+	accountCh := make(chan *accHash, 100)
+	go func() {
+		accIt, err := snaptree.AccountIterator(root, common.Hash{})
+		if err != nil {
+			panic(fmt.Sprintf("account iteration could not start: %v", err))
+			//return err
+		}
+		defer accIt.Release()
+		// Process all accounts sequentially
+		for accIt.Next() {
+			acc, err := snapshot.FullAccount(accIt.Account())
+			if err != nil {
+				panic(err)
+			}
+			accountCh <- &accHash{
+				account: acc,
+				hash:    accIt.Hash(),
+			}
+		}
+		if accIt.Error() != nil {
+			log.Error("Account iteration ended on error ", "root", root, "error", accIt.Error())
+		}
+		close(accountCh)
+	}()
 
 	// Process all accounts sequentially
-	for accIt.Next() {
+	for accData := range accountCh {
+		acc := accData.account
+		accHash := accData.hash
 		if time.Since(lastReport) > time.Second*8 {
-			log.Info("Traversing state", "accounts", accounts, "at", accIt.Hash().String(), "elapsed", common.PrettyDuration(time.Since(start)))
+			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
 		if accounts == 100000 {
-			log.Info("Traversing state", "accounts", accounts, "at", accIt.Hash().String(), "elapsed", common.PrettyDuration(time.Since(start)))
+			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 			break
 		}
 		accounts += 1
-		acc, err := snapshot.FullAccount(accIt.Account())
-		if err != nil {
-			log.Error("Invalid account encountered during traversal", "error", err)
-			return err
-		}
 
 		// Store the basic account data
 		var (
@@ -212,7 +252,7 @@ func convertToVerkle(ctx *cli.Context) error {
 		newValues[4] = codeSize[:]
 
 		// XXX use preimages, accIter is the hash of the address
-		stem := trieUtils.GetTreeKeyVersion(accIt.Hash().Bytes())[:]
+		stem := trieUtils.GetTreeKeyVersion(accHash.Bytes())[:]
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
 			var (
@@ -232,10 +272,10 @@ func convertToVerkle(ctx *cli.Context) error {
 				// The chunkkey needs to be recalculated every 128th item or so,
 				// or specifically whenever the subIndex toggles to zero
 				if subIndex := byte((128 + i) % 256); subIndex == 0 {
-					chunkkey = trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint64(i))
+					chunkkey = trieUtils.GetTreeKeyCodeChunk(accHash.Bytes(), uint64(i))
 				} else {
 					// Else we can just update the last byte
-					nchunk := make([]byte, 31)
+					nchunk := make([]byte, 32)
 					copy(nchunk, chunkkey)
 					nchunk[31] = subIndex
 					chunkkey = nchunk
@@ -272,19 +312,24 @@ func convertToVerkle(ctx *cli.Context) error {
 				values   = make([][]byte, 256)
 			)
 			copy(laststem[:], stem)
-			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
+			storageIt, err := snaptree.StorageIterator(root, accHash, common.Hash{})
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
 				return err
 			}
-			for storageIt.Next() {
+			slotCh := make(chan *slotHash, 100)
+			// TODO these aren't properly stopped in case of errors / aborts
+			// TODO instead of firing up a new goroutine each time, just pass
+			// the iterator to a persistent routine (which also handles aborts properly)
+			go iterateSlots(slotCh, storageIt)
+			for sh := range slotCh {
 				if time.Since(lastReport) > time.Second*8 {
-					log.Info("Traversing state", "accounts", accounts, "in", accIt.Hash().String(), "elapsed", common.PrettyDuration(time.Since(start)))
+					log.Info("Traversing state", "accounts", accounts, "in", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 					lastReport = time.Now()
 				}
-				slotkey := trieUtils.GetTreeKeyStorageSlot(accIt.Hash().Bytes(), uint256.NewInt(0).SetBytes(storageIt.Hash().Bytes()))
+				slotkey := trieUtils.GetTreeKeyStorageSlot(accHash.Bytes(), uint256.NewInt(0).SetBytes(sh.hash.Bytes()))
 				var value [32]byte
-				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
+				copy(value[:len(sh.slot)-1], sh.slot)
 
 				// if the slot belongs to the header group, store it there
 				if bytes.Equal(slotkey[:31], stem) {
@@ -300,22 +345,12 @@ func convertToVerkle(ctx *cli.Context) error {
 				}
 				kvCh <- &group{laststem, values[:]}
 			}
-
-			if storageIt.Error() != nil {
-				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIt.Error())
-				return storageIt.Error()
-			}
-			storageIt.Release()
 		}
 		// Finish with storing the complete account header group
 		// inside the tree.
 		var st [31]byte
 		copy(st[:], stem)
 		kvCh <- &group{st, newValues}
-	}
-	if accIt.Error() != nil {
-		log.Error("Failed to compute commitment", "root", root, "error", accIt.Error())
-		return accIt.Error()
 	}
 	log.Info("Disk dump ", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
 	close(kvCh)
