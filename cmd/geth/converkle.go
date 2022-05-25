@@ -184,6 +184,11 @@ func convertToVerkle(ctx *cli.Context) error {
 			log.Info("Traversing state", "accounts", accounts, "at", accIt.Hash().String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
+		if accounts == 100000 {
+			log.Info("Traversing state", "accounts", accounts, "at", accIt.Hash().String(), "elapsed", common.PrettyDuration(time.Since(start)))
+			lastReport = time.Now()
+			break
+		}
 		accounts += 1
 		acc, err := snapshot.FullAccount(accIt.Account())
 		if err != nil {
