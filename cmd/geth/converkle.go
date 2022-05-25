@@ -235,7 +235,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
-		if accounts == 100000 {
+		if accounts == 17696139 {
 			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 			break
