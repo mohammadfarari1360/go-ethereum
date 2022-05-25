@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
+	"github.com/golang/snappy"
 	"github.com/holiman/uint256"
 	"gopkg.in/urfave/cli.v1"
 	"unsafe"
@@ -96,13 +97,18 @@ func dumpToDisk(elemCh chan *group) error {
 			Stem:   elem.stem,
 			Offset: dataOffset,
 		}
-		if payload, err := rlp.EncodeToBytes(elem.values); err != nil {
-			return err
-		} else if n, err := dataFile.w.Write(payload); err != nil {
-			return err
-		} else {
-			idx.Size = uint32(n)
-			dataOffset += uint64(n)
+		{ // Writing the data
+			payload, err := rlp.EncodeToBytes(elem.values)
+			if err != nil {
+				return err
+			}
+			payload = snappy.Encode(nil, payload)
+			if n, err := dataFile.w.Write(payload); err != nil {
+				return err
+			} else {
+				idx.Size = uint32(n)
+				dataOffset += uint64(n)
+			}
 		}
 		if err := binary.Write(indexFile.w, binary.LittleEndian, &idx); err != nil {
 			return err
