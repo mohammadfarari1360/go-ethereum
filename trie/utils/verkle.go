@@ -100,14 +100,9 @@ func GetTreeKeyCodeSize(address []byte) []byte {
 	return GetTreeKey(address, zero, CodeSizeLeafKey)
 }
 
-func GetTreeKeyCodeChunk(address []byte, chunk *uint256.Int) []byte {
-	chunkOffset := new(uint256.Int).Add(CodeOffset, chunk)
-	treeIndex := new(uint256.Int).Div(chunkOffset, VerkleNodeWidth)
-	subIndexMod := new(uint256.Int).Mod(chunkOffset, VerkleNodeWidth).Bytes()
-	var subIndex byte
-	if len(subIndexMod) != 0 {
-		subIndex = subIndexMod[0]
-	}
+func GetTreeKeyCodeChunk(address []byte, chunk uint64) []byte {
+	treeIndex := new(uint256.Int).SetUint64((128 + chunk) / 256)
+	subIndex := byte((128 + chunk) % 256)
 	return GetTreeKey(address, treeIndex, subIndex)
 }
 

@@ -181,7 +181,7 @@ func convertToVerkle(ctx *cli.Context) error {
 	// Process all accounts sequentially
 	for accIt.Next() {
 		if time.Since(lastReport) > time.Second*8 {
-			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+			log.Info("Traversing state", "accounts", accounts, "at", accIt.Hash().String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
 		accounts += 1
@@ -222,8 +222,19 @@ func convertToVerkle(ctx *cli.Context) error {
 			if err != nil {
 				panic(err)
 			}
+			var chunkkey []byte
 			for i, chunk := range chunks {
-				chunkkey := trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint256.NewInt(uint64(i)))
+				// The chunkkey needs to be recalculated every 128th item or so,
+				// or specifically whenever the subIndex toggles to zero
+				if subIndex := byte((128 + chunk) % 256); subIndex == 0 {
+					chunkkey = trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint64(i))
+				} else {
+					// Else we can just update the last byte
+					nchunk = make([]byte, 31)
+					copy(nchunk, chunkkey)
+					nchunk[31] = subIndex
+					chunkkey = nchunk
+				}
 
 				// if the chunk belongs to the header group, store it there
 				if bytes.Equal(chunkkey[:31], stem) {
@@ -263,7 +274,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			}
 			for storageIt.Next() {
 				if time.Since(lastReport) > time.Second*8 {
-					log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+					log.Info("Traversing state", "accounts", accounts, "in", accIt.Hash().String(), "elapsed", common.PrettyDuration(time.Since(start)))
 					lastReport = time.Now()
 				}
 				slotkey := trieUtils.GetTreeKeyStorageSlot(accIt.Hash().Bytes(), uint256.NewInt(0).SetBytes(storageIt.Hash().Bytes()))
