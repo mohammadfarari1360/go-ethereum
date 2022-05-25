@@ -242,6 +242,21 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 		accounts += 1
 
+		// Get the loader-routines started
+		var slotCh chan *slotHash
+		if !bytes.Equal(acc.Root, emptyRoot[:]) {
+			storageIt, err := snaptree.StorageIterator(root, accHash, common.Hash{})
+			if err != nil {
+				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
+				return err
+			}
+			slotCh = make(chan *slotHash, 100)
+			// TODO these aren't properly stopped in case of errors / aborts
+			// TODO instead of firing up a new goroutine each time, just pass
+			// the iterator to a persistent routine (which also handles aborts properly)
+			go iterateSlots(slotCh, storageIt)
+		}
+
 		// Store the basic account data
 		var (
 			nonce, balance, version, codeSize [32]byte
@@ -312,22 +327,12 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 
 		// Save every slot into the tree
-		if !bytes.Equal(acc.Root, emptyRoot[:]) {
+		if slotCh != nil {
 			var (
 				laststem [31]byte
 				values   = make([][]byte, 256)
 			)
 			copy(laststem[:], stem)
-			storageIt, err := snaptree.StorageIterator(root, accHash, common.Hash{})
-			if err != nil {
-				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
-				return err
-			}
-			slotCh := make(chan *slotHash, 100)
-			// TODO these aren't properly stopped in case of errors / aborts
-			// TODO instead of firing up a new goroutine each time, just pass
-			// the iterator to a persistent routine (which also handles aborts properly)
-			go iterateSlots(slotCh, storageIt)
 			for sh := range slotCh {
 				if time.Since(lastReport) > time.Second*8 {
 					log.Info("Traversing state", "accounts", accounts, "in", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
