@@ -226,11 +226,11 @@ func convertToVerkle(ctx *cli.Context) error {
 			for i, chunk := range chunks {
 				// The chunkkey needs to be recalculated every 128th item or so,
 				// or specifically whenever the subIndex toggles to zero
-				if subIndex := byte((128 + chunk) % 256); subIndex == 0 {
+				if subIndex := byte((128 + i) % 256); subIndex == 0 {
 					chunkkey = trieUtils.GetTreeKeyCodeChunk(accIt.Hash().Bytes(), uint64(i))
 				} else {
 					// Else we can just update the last byte
-					nchunk = make([]byte, 31)
+					nchunk := make([]byte, 31)
 					copy(nchunk, chunkkey)
 					nchunk[31] = subIndex
 					chunkkey = nchunk
