@@ -17,17 +17,20 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
-	"bufio"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -39,7 +42,6 @@ import (
 	"github.com/golang/snappy"
 	"github.com/holiman/uint256"
 	"gopkg.in/urfave/cli.v1"
-	"unsafe"
 )
 
 // group represents a piece of data to be stored in the verkle tree.
@@ -152,6 +154,10 @@ func iterateSlots(slotCh chan *slotHash, storageIt snapshot.StorageIterator) {
 func convertToVerkle(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
+
+	go func() {
+		fmt.Println(http.ListenAndServe("localhost:8080", nil))
+	}()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	headBlock := rawdb.ReadHeadBlock(chaindb)
