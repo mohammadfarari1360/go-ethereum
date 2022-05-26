@@ -206,8 +206,10 @@ func convertToVerkle(ctx *cli.Context) error {
 	type accHash struct {
 		account snapshot.Account
 		hash    common.Hash
+		code    []byte
 	}
 	// accounts are pretty small, buffering 100 of them isn't a biggie
+	// even with code, the max is only a couple of MB
 	accountCh := make(chan *accHash, 100)
 	go func() {
 		accIt, err := snaptree.AccountIterator(root, common.Hash{})
@@ -222,9 +224,14 @@ func convertToVerkle(ctx *cli.Context) error {
 			if err != nil {
 				panic(err)
 			}
+			var code []byte
+			if !bytes.Equal(acc.CodeHash, emptyCode) {
+				code = rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+			}
 			accountCh <- &accHash{
 				account: acc,
 				hash:    accIt.Hash(),
+				code:    code,
 			}
 		}
 		if accIt.Error() != nil {
@@ -281,8 +288,7 @@ func convertToVerkle(ctx *cli.Context) error {
 		// XXX use preimages, accIter is the hash of the address
 		stem := trieUtils.GetTreeKeyVersion(accHash.Bytes())[:]
 		// Store the account code if present
-		if !bytes.Equal(acc.CodeHash, emptyCode) {
-			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+		if code := accData.code; code != nil {
 			binary.LittleEndian.PutUint64(codeSize[:8], uint64(len(code)))
 
 			chunks, err := trie.ChunkifyCode(code)
