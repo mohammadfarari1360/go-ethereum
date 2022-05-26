@@ -276,11 +276,6 @@ func convertToVerkle(ctx *cli.Context) error {
 		stem := trieUtils.GetTreeKeyVersion(accHash.Bytes())[:]
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
-			var (
-				laststem [31]byte
-				values   = make([][]byte, 256)
-			)
-			copy(laststem[:], stem)
 			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
 			binary.LittleEndian.PutUint64(codeSize[:8], uint64(len(code)))
 
@@ -288,41 +283,28 @@ func convertToVerkle(ctx *cli.Context) error {
 			if err != nil {
 				panic(err)
 			}
-			var chunkkey []byte
-			for i, chunk := range chunks {
-				// The chunkkey needs to be recalculated every 128th item or so,
-				// or specifically whenever the subIndex toggles to zero
-				if subIndex := byte((128 + i) % 256); subIndex == 0 {
-					chunkkey = trieUtils.GetTreeKeyCodeChunk(accHash.Bytes(), uint64(i))
-				} else {
-					// Else we can just update the last byte
-					nchunk := make([]byte, 32)
-					copy(nchunk, chunkkey)
-					nchunk[31] = subIndex
-					chunkkey = nchunk
-				}
 
-				// if the chunk belongs to the header group, store it there
-				if bytes.Equal(chunkkey[:31], stem) {
-					newValues[int(chunkkey[31])] = chunk[:]
-					continue
-				}
+			// Store all the chunks belonging to the header group
+			for i := 0; i < 128 && i < len(chunks); i++ {
+				newValues[128+i] = chunks[i][:]
+			}
 
-				// if the chunk belongs to the same group as the previous
-				// one, add it to the list of values to be inserted in one
-				// go.
-				if bytes.Equal(laststem[:], chunkkey[:31]) {
-					values[chunkkey[31]] = chunk[:]
-					continue
+			// Store the following groups
+			for i := 128; i < len(chunks); {
+				values := make([][]byte, 256)
+				chunkkey := trieUtils.GetTreeKeyCodeChunk(accHash[:], uint64(i))
+				j := i
+				for ; (j-i) < 256 && j < len(chunks); j++ {
+
+					values[(j-128)%256] = chunks[j][:]
 				}
+				i = j
 
 				// Otherwise, store the previous group in the tree with a
 				// stem insertion.
-				kvCh <- &group{laststem, values}
-
-				values = make([][]byte, 256)
-				values[chunkkey[31]] = chunk[:]
-				copy(laststem[:], chunkkey[:31])
+				g := &group{values: values}
+				copy(g.stem[:], chunkkey[:31])
+				kvCh <- g
 			}
 		}
 
@@ -354,6 +336,11 @@ func convertToVerkle(ctx *cli.Context) error {
 					values[slotkey[31]] = value[:]
 					continue
 				}
+				kvCh <- &group{laststem, values[:]}
+			}
+
+			// commit the last group if it's not the header group
+			if !bytes.Equal(laststem[:31], stem) {
 				kvCh <- &group{laststem, values[:]}
 			}
 		}
