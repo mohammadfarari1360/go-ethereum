@@ -194,6 +194,22 @@ block is used.
 geth snapshot sort-files
  `,
 			},
+			{
+				Name:      "insert-nodes",
+				Usage:     "insert the sorted nodes into the tree",
+				ArgsUsage: "<root>",
+				Action:    utils.MigrateFlags(doInsertion),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.RopstenFlag,
+					utils.RinkebyFlag,
+					utils.GoerliFlag,
+				},
+				Description: `
+geth snapshot sort-files
+ `,
+			},
 		},
 	}
 )
