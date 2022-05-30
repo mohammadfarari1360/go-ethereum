@@ -353,6 +353,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 				// flush the previous group, iff it's not the header group
 				if !bytes.Equal(stem[:31], laststem[:]) {
+					kvCh <- &group{stem: laststem, values: values[:]}
 				}
 
 				values = make([][]byte, 256)
