@@ -53,9 +53,9 @@ type group struct {
 }
 
 type Index struct {
-	Stem   [31]byte
-	Offset uint64
-	Size   uint32
+	Stem   [31]byte //31
+	Offset uint64   // 8
+	Size   uint32   // 4 == 43
 }
 
 var IdxSize = int(unsafe.Sizeof(Index{}))
@@ -443,7 +443,129 @@ func sortFiles() error {
 	return nil
 }
 
+func readDataDump(itemCh chan group, abortCh chan struct{}) error {
+	dataFile, err := os.Open("dump-00.verkle")
+	if err != nil {
+		return err
+	}
+	defer dataFile.Close()
+
+	var (
+		indexFiles []*os.File
+		recordList []Index
+		eofList    []bool
+		//count      = 0
+	)
+	// open all the files and read the first record of each
+	for i := 0; ; i++ {
+		idxFile := fmt.Sprintf("index-%02d.verkle", i)
+		if _, err := os.Stat(idxFile); err != nil {
+			break // no more files
+		}
+		if f, err := os.Open(idxFile); err != nil {
+			return err
+		} else {
+			indexFiles = append(indexFiles, f)
+			eofList = append(eofList, false)
+			recordList = append(recordList, Index{})
+		}
+		err = binary.Read(indexFiles[i], binary.LittleEndian, &recordList[i])
+		eofList[i] = err == io.EOF
+	}
+	defer func() {
+		for _, f := range indexFiles {
+			f.Close()
+		}
+	}()
+
+	for {
+		smallest := 0
+		done := true
+		for i, _ := range indexFiles {
+			if eofList[i] {
+				continue
+			}
+			done = false
+			if bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
+				smallest = i
+			}
+		}
+		if done {
+			break
+		}
+		dataFile.Seek(int64(recordList[smallest].Offset), io.SeekStart)
+		valuesSerializedCompressed := make([]byte, recordList[smallest].Size)
+		n, err := dataFile.Read(valuesSerializedCompressed)
+		if err != nil || uint32(n) != recordList[smallest].Size {
+			return fmt.Errorf("error reading data: %w size=%d != %d", err, n, recordList[smallest].Size)
+		}
+		data, err := snappy.Decode(nil, valuesSerializedCompressed)
+		var element group
+		rlp.DecodeBytes(data, &element.values)
+		copy(element.stem[:], recordList[smallest].Stem[:])
+		// pass the data
+		itemCh <- element
+		// read next index
+		err = binary.Read(indexFiles[smallest], binary.LittleEndian, &recordList[smallest])
+		if err != nil && err != io.EOF {
+			return err
+		}
+		eofList[smallest] = err == io.EOF
+
+		select {
+		case <-abortCh:
+			return nil
+		default:
+			continue
+		}
+
+	}
+	return nil
+}
+
 func doInsertion(ctx *cli.Context) error {
+
+	var (
+		start      = time.Now()
+		lastReport time.Time
+		itemCh     = make(chan group, 1000)
+		abortCh    = make(chan struct{})
+		wg         sync.WaitGroup
+		count      = 0
+		root       = verkle.New()
+	)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := readDataDump(itemCh, abortCh); err != nil {
+			log.Error("Error reading data", "err", err)
+		}
+	}()
+	defer close(abortCh)
+
+	for elem := range itemCh {
+
+		if time.Since(lastReport) > time.Second*8 {
+			log.Info("Inserting nodes", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+			lastReport = time.Now()
+		}
+
+		leaf := verkle.NewLeafNode(elem.stem[:], elem.values)
+		fmt.Printf("Inserting %x \n", elem.stem)
+		if err := root.(*verkle.InternalNode).InsertStemOrdered(elem.stem[:], leaf, nil); err != nil {
+			return err
+		}
+		count++
+		if count == 100_000 {
+			log.Info("aborting early here, time for lunch")
+			break
+		}
+	}
+	log.Info("Insertion done", "elems", count, "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+func xdoInsertion(ctx *cli.Context) error {
 	num_files := 0
 	for ; ; num_files++ {
 		idxFile := fmt.Sprintf("index-%02d.verkle", num_files)
@@ -515,7 +637,7 @@ func doInsertion(ctx *cli.Context) error {
 		}
 		valuesSerialized := make([]byte, rlpLen)
 		snappy.Decode(valuesSerialized, valuesSerializedCompressed)
-		values := make( [][]byte, 256)
+		values := make([][]byte, 256)
 		list, _, _ := rlp.SplitList(valuesSerialized)
 		for i := range values {
 			values[i], list, _ = rlp.SplitString(list)
@@ -537,8 +659,11 @@ func doInsertion(ctx *cli.Context) error {
 		eofList[smallest] = err == io.EOF
 
 		count++
+		if count == 100_000 {
+			log.Info("aborting early here, time for lunch")
+			break
+		}
 	}
-
 	log.Info("Insertion done", "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
 	root.ComputeCommitment()
 
