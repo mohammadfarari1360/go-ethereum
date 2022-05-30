@@ -479,14 +479,14 @@ func readDataDump(itemCh chan group, abortCh chan struct{}) error {
 	}()
 
 	for {
-		smallest := 0
+		smallest := -1
 		done := true
 		for i, _ := range indexFiles {
 			if eofList[i] {
 				continue
 			}
 			done = false
-			if bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
+			if smallest = -1 || bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
 				smallest = i
 			}
 		}
