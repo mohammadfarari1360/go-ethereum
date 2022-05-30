@@ -502,6 +502,7 @@ func readDataDump(itemCh chan group, abortCh chan struct{}) error {
 		data, err := snappy.Decode(nil, valuesSerializedCompressed)
 		var element group
 		rlp.DecodeBytes(data, &element.values)
+
 		copy(element.stem[:], recordList[smallest].Stem[:])
 		// pass the data
 		itemCh <- element
@@ -551,12 +552,9 @@ func doInsertion(ctx *cli.Context) error {
 		}
 		var st = make([]byte, 31)
 		copy(st, elem.stem[:])
-
 		leaf := verkle.NewLeafNode(st, elem.values)
-		fmt.Printf("Inserting %x \n", st)
-
 		if err := root.(*verkle.InternalNode).InsertStemOrdered(st, leaf, nil); err != nil {
-			fmt.Printf("Error when inserting %x !\n", elem.stem)
+			log.Warn("Error during insert", "stem", fmt.Sprintf("%x", elem.stem), err, err)
 			return err
 		}
 		count++
@@ -568,110 +566,3 @@ func doInsertion(ctx *cli.Context) error {
 	log.Info("Insertion done", "elems", count, "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
-
-/*
-func xdoInsertion(ctx *cli.Context) error {
-	num_files := 0
-	for ; ; num_files++ {
-		idxFile := fmt.Sprintf("index-%02d.verkle", num_files)
-		if _, err := os.Stat(idxFile); err != nil {
-			break
-		}
-	}
-
-	dataFile, err := os.OpenFile(fmt.Sprintf("dump-%02d.verkle", 0), os.O_RDONLY, 0600)
-	if err != nil {
-		return err
-	}
-	defer dataFile.Close()
-
-	var (
-		start      = time.Now()
-		lastReport time.Time
-		indexFiles = make([]*os.File, num_files)
-		recordList = make([]Index, num_files)
-		eofList    = make([]bool, num_files)
-		root       = verkle.New()
-		count      = 0
-	)
-
-	// open all the files and read the first record of each
-	for i := 0; i < num_files; i++ {
-		f, err := os.OpenFile(fmt.Sprintf("index-%02d.verkle", i), os.O_RDONLY, 0600)
-		if err != nil {
-			return err
-		}
-		indexFiles[i] = f
-		err = binary.Read(indexFiles[i], binary.LittleEndian, &recordList[i])
-		eofList[i] = err == io.EOF
-		defer indexFiles[i].Close()
-	}
-
-	for {
-		smallest := 0
-		done := true
-		for i := 0; i < num_files; i++ {
-			if eofList[i] {
-				continue
-			}
-			done = false
-
-			if bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
-				smallest = i
-			}
-		}
-		if done {
-			break
-		}
-
-		if time.Since(lastReport) > time.Second*8 {
-			log.Info("Inserting nodes", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-			lastReport = time.Now()
-		}
-
-		dataFile.Seek(int64(recordList[smallest].Offset), io.SeekStart)
-		valuesSerializedCompressed := make([]byte, recordList[smallest].Size)
-		n, err := dataFile.Read(valuesSerializedCompressed)
-		if err != nil || uint32(n) != recordList[smallest].Size {
-			return fmt.Errorf("error reading data: %w size=%d != %d", err, n, recordList[smallest].Size)
-		}
-
-		rlpLen, err := snappy.DecodedLen(valuesSerializedCompressed)
-		if err != nil {
-			return fmt.Errorf("problem getting the size of compressed data for account %d: %w", count, err)
-		}
-		valuesSerialized := make([]byte, rlpLen)
-		snappy.Decode(valuesSerialized, valuesSerializedCompressed)
-		values := make([][]byte, 256)
-		list, _, _ := rlp.SplitList(valuesSerialized)
-		for i := range values {
-			values[i], list, _ = rlp.SplitString(list)
-		}
-
-		var stem [31]byte
-		copy(stem[:], recordList[smallest].Stem[:])
-		leaf := verkle.NewLeafNode(stem[:], values)
-		if err != nil {
-			return fmt.Errorf("error deserializing leaf: %w", err)
-		}
-
-		root.(*verkle.InternalNode).InsertStemOrdered(stem[:], leaf, nil)
-
-		err = binary.Read(indexFiles[smallest], binary.LittleEndian, &recordList[smallest])
-		if err != nil && err != io.EOF {
-			return err
-		}
-		eofList[smallest] = err == io.EOF
-
-		count++
-		if count == 100_000 {
-			log.Info("aborting early here, time for lunch")
-			break
-		}
-	}
-	log.Info("Insertion done", "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
-	root.ComputeCommitment()
-
-	return nil
-}
-*/
