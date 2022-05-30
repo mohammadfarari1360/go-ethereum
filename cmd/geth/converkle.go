@@ -486,7 +486,7 @@ func readDataDump(itemCh chan group, abortCh chan struct{}) error {
 				continue
 			}
 			done = false
-			if smallest = -1 || bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
+			if smallest == -1 || bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
 				smallest = i
 			}
 		}
