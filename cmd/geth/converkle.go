@@ -250,11 +250,6 @@ func convertToVerkle(ctx *cli.Context) error {
 			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
-		if accounts == 17696139 {
-			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
-			lastReport = time.Now()
-			break
-		}
 		accounts += 1
 
 		// Get the loader-routines started
@@ -444,6 +439,29 @@ func sortFiles() error {
 }
 
 func doInsertion(ctx *cli.Context) error {
+	convdb, err := rawdb.NewLevelDBDatabase("verkle", 128, 128, "", false)
+	if err != nil {
+		panic(err)
+	}
+
+	flushCh := make(chan verkle.VerkleNode)
+	saveverkle := func(node verkle.VerkleNode) {
+		flushCh <- node
+	}
+	go func() {
+		for node := range flushCh {
+			comm := node.ComputeCommitment()
+			s, err := node.Serialize()
+			if err != nil {
+				panic(err)
+			}
+			commB := comm.Bytes()
+			if err := convdb.Put(commB[:], s); err != nil {
+				panic(err)
+			}
+		}
+	}()
+
 	num_files := 0
 	for ; ; num_files++ {
 		idxFile := fmt.Sprintf("index-%02d.verkle", num_files)
@@ -481,7 +499,7 @@ func doInsertion(ctx *cli.Context) error {
 	}
 
 	for {
-		smallest := 0
+		smallest := -1
 		done := true
 		for i := 0; i < num_files; i++ {
 			if eofList[i] {
@@ -489,7 +507,7 @@ func doInsertion(ctx *cli.Context) error {
 			}
 			done = false
 
-			if bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
+			if smallest == -1 || bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
 				smallest = i
 			}
 		}
@@ -528,7 +546,7 @@ func doInsertion(ctx *cli.Context) error {
 			return fmt.Errorf("error deserializing leaf: %w", err)
 		}
 
-		root.(*verkle.InternalNode).InsertStemOrdered(stem[:], leaf, nil)
+		root.(*verkle.InternalNode).InsertStemOrdered(stem[:], leaf, saveverkle)
 
 		err = binary.Read(indexFiles[smallest], binary.LittleEndian, &recordList[smallest])
 		if err != nil && err != io.EOF {
@@ -539,8 +557,10 @@ func doInsertion(ctx *cli.Context) error {
 		count++
 	}
 
-	log.Info("Insertion done", "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
 	root.ComputeCommitment()
+	root.(*verkle.InternalNode).Flush(saveverkle)
+	close(flushCh)
+	log.Info("Insertion done", "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
 
 	return nil
 }
