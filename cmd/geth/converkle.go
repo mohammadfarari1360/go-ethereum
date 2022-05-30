@@ -549,10 +549,13 @@ func doInsertion(ctx *cli.Context) error {
 			log.Info("Inserting nodes", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
+		var st = make([]byte, 31)
+		copy(st, elem.stem[:])
 
-		leaf := verkle.NewLeafNode(elem.stem[:], elem.values)
-		fmt.Printf("Inserting %x \n", elem.stem)
-		if err := root.(*verkle.InternalNode).InsertStemOrdered(elem.stem[:], leaf, nil); err != nil {
+		leaf := verkle.NewLeafNode(st, elem.values)
+		fmt.Printf("Inserting %x \n", st)
+
+		if err := root.(*verkle.InternalNode).InsertStemOrdered(st, leaf, nil); err != nil {
 			fmt.Printf("Error when inserting %x !\n", elem.stem)
 			return err
 		}
