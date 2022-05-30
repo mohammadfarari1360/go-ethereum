@@ -553,6 +553,7 @@ func doInsertion(ctx *cli.Context) error {
 		leaf := verkle.NewLeafNode(elem.stem[:], elem.values)
 		fmt.Printf("Inserting %x \n", elem.stem)
 		if err := root.(*verkle.InternalNode).InsertStemOrdered(elem.stem[:], leaf, nil); err != nil {
+			fmt.Printf("Error when inserting %x !\n", elem.stem)
 			return err
 		}
 		count++
@@ -565,6 +566,7 @@ func doInsertion(ctx *cli.Context) error {
 	return nil
 }
 
+/*
 func xdoInsertion(ctx *cli.Context) error {
 	num_files := 0
 	for ; ; num_files++ {
@@ -669,3 +671,4 @@ func xdoInsertion(ctx *cli.Context) error {
 
 	return nil
 }
+/*
