@@ -507,7 +507,7 @@ func doInsertion(ctx *cli.Context) error {
 			}
 			done = false
 
-			if smallest == -1 || bytes.Compare(recordList[smallest].Stem[:], recordList[i].Stem[:]) < 0 {
+			if smallest == -1 || bytes.Compare(recordList[i].Stem[:], recordList[smallest].Stem[:]) < 0 {
 				smallest = i
 			}
 		}
@@ -546,7 +546,10 @@ func doInsertion(ctx *cli.Context) error {
 			return fmt.Errorf("error deserializing leaf: %w", err)
 		}
 
-		root.(*verkle.InternalNode).InsertStemOrdered(stem[:], leaf, saveverkle)
+		err = root.(*verkle.InternalNode).InsertStemOrdered(stem[:], leaf, saveverkle)
+		if err != nil {
+			return err
+		}
 
 		err = binary.Read(indexFiles[smallest], binary.LittleEndian, &recordList[smallest])
 		if err != nil && err != io.EOF {
