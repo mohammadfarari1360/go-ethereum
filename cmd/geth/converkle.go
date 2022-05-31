@@ -142,9 +142,11 @@ type slotHash struct {
 func iterateSlots(slotCh chan *slotHash, storageIt snapshot.StorageIterator) {
 	defer storageIt.Release()
 	for storageIt.Next() {
+		var slot [32]byte
+		copy(slot[:], storageIt.Slot())
 		slotCh <- &slotHash{
 			hash: storageIt.Hash(),
-			slot: storageIt.Slot(),
+			slot: slot[:],
 		}
 	}
 	if storageIt.Error() != nil {
