@@ -252,11 +252,6 @@ func convertToVerkle(ctx *cli.Context) error {
 			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 			lastReport = time.Now()
 		}
-		if accounts == 17696139 {
-			log.Info("Traversing state", "accounts", accounts, "at", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
-			lastReport = time.Now()
-			break
-		}
 		accounts += 1
 
 		// Get the loader-routines started
@@ -555,6 +550,29 @@ func doInsertion(ctx *cli.Context) error {
 	}()
 	defer close(abortCh)
 
+	convdb, err := rawdb.NewLevelDBDatabase("verkle", 128, 128, "", false)
+	if err != nil {
+		panic(err)
+	}
+
+	flushCh := make(chan verkle.VerkleNode)
+	saveverkle := func(node verkle.VerkleNode) {
+		flushCh <- node
+	}
+	go func() {
+		for node := range flushCh {
+			comm := node.ComputeCommitment()
+			s, err := node.Serialize()
+			if err != nil {
+				panic(err)
+			}
+			commB := comm.Bytes()
+			if err := convdb.Put(commB[:], s); err != nil {
+				panic(err)
+			}
+		}
+	}()
+
 	for elem := range itemCh {
 
 		if time.Since(lastReport) > time.Second*8 {
@@ -564,16 +582,13 @@ func doInsertion(ctx *cli.Context) error {
 		var st = make([]byte, 31)
 		copy(st, elem.stem[:])
 		leaf := verkle.NewLeafNode(st, elem.values)
-		if err := root.(*verkle.InternalNode).InsertStemOrdered(st, leaf, nil); err != nil {
+		if err := root.(*verkle.InternalNode).InsertStemOrdered(st, leaf, saveverkle); err != nil {
 			log.Warn("Error during insert", "stem", fmt.Sprintf("%x", elem.stem), err, err)
 			return err
 		}
 		count++
-		if count == 100_000 {
-			log.Info("aborting early here, time for lunch")
-			break
-		}
 	}
+	close(flushCh)
 	log.Info("Insertion done", "elems", count, "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
