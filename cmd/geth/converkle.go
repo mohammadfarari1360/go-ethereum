@@ -26,8 +26,10 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -403,7 +405,7 @@ func doFileSorting(ctx *cli.Context) error {
 	for id := 0; ; id++ {
 		idxFile := fmt.Sprintf("index-%02d.verkle", id)
 		if _, err := os.Stat(idxFile); err != nil {
-			return err
+			break
 		}
 		log.Info("Processing indexfile", "name", idxFile)
 		data, err := os.ReadFile(idxFile)
@@ -420,75 +422,37 @@ func doFileSorting(ctx *cli.Context) error {
 	return nil
 }
 
-func readDataDump(itemCh chan group, abortCh chan struct{}) error {
+func readDataDump(itemCh chan group, abortCh chan struct{}, cpuNumber int) error {
 	dataFile, err := os.Open("dump-00.verkle")
 	if err != nil {
 		return err
 	}
 	defer dataFile.Close()
 
-	var (
-		indexFiles []*os.File
-		recordList []Index
-		eofList    []bool
-		//count      = 0
-	)
 	// open all the files and read the first record of each
-	for i := 0; ; i++ {
-		idxFile := fmt.Sprintf("index-%02d.verkle", i)
-		if _, err := os.Stat(idxFile); err != nil {
-			break // no more files
-		}
-		if f, err := os.Open(idxFile); err != nil {
-			return err
-		} else {
-			indexFiles = append(indexFiles, f)
-			eofList = append(eofList, false)
-			recordList = append(recordList, Index{})
-		}
-		err = binary.Read(indexFiles[i], binary.LittleEndian, &recordList[i])
-		eofList[i] = err == io.EOF
+	idxFile, err := os.Open(fmt.Sprintf("index-%02d.verkle", cpuNumber))
+	if err != nil {
+		return err
 	}
-	defer func() {
-		for _, f := range indexFiles {
-			f.Close()
-		}
-	}()
-
-	for {
-		smallest := -1
-		done := true
-		for i, _ := range indexFiles {
-			if eofList[i] {
-				continue
-			}
-			done = false
-			if smallest == -1 || bytes.Compare(recordList[i].Stem[:], recordList[smallest].Stem[:]) < 0 {
-				smallest = i
-			}
-		}
-		if done {
-			break
-		}
-		dataFile.Seek(int64(recordList[smallest].Offset), io.SeekStart)
-		valuesSerializedCompressed := make([]byte, recordList[smallest].Size)
+	defer idxFile.Close()
+	var idx Index
+	err = binary.Read(idxFile, binary.LittleEndian, &idx)
+	for err != io.EOF {
+		dataFile.Seek(int64(idx.Offset), io.SeekStart)
+		valuesSerializedCompressed := make([]byte, idx.Size)
 		n, err := dataFile.Read(valuesSerializedCompressed)
-		if err != nil || uint32(n) != recordList[smallest].Size {
-			return fmt.Errorf("error reading data: %w size=%d != %d", err, n, recordList[smallest].Size)
+		if err != nil || uint32(n) != idx.Size {
+			return fmt.Errorf("error reading data: %w size=%d != %d", err, n, idx.Size)
 		}
 		data, err := snappy.Decode(nil, valuesSerializedCompressed)
 		var element group
 		rlp.DecodeBytes(data, &element.values)
 
-		copy(element.stem[:], recordList[smallest].Stem[:])
+		copy(element.stem[:], idx.Stem[:])
 		// pass the data
 		itemCh <- element
 		// read next index
-		err = binary.Read(indexFiles[smallest], binary.LittleEndian, &recordList[smallest])
-		if err != nil && err != io.EOF {
-			return err
-		}
-		eofList[smallest] = err == io.EOF
+		err = binary.Read(idxFile, binary.LittleEndian, &idx)
 
 		select {
 		case <-abortCh:
@@ -506,25 +470,29 @@ func doInsertion(ctx *cli.Context) error {
 	var (
 		start      = time.Now()
 		lastReport time.Time
-		itemCh     = make(chan group, 1000)
+		itemChs    = make([]chan group, runtime.NumCPU())
 		abortCh    = make(chan struct{})
 		wg         sync.WaitGroup
-		count      = 0
-		root       = verkle.New()
+		count      = uint64(0)
 	)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := readDataDump(itemCh, abortCh); err != nil {
-			log.Error("Error reading data", "err", err)
-		}
-		close(itemCh)
-	}()
 	defer close(abortCh)
+	wg.Add(runtime.NumCPU())
+	for numCPU := range itemChs {
+		itemChs[numCPU] = make(chan group, 1000)
+		itemCh := itemChs[numCPU]
+		i := numCPU
+		go func() {
+			defer wg.Done()
+			if err := readDataDump(itemCh, abortCh, i); err != nil {
+				log.Error("Error reading data", "err", err)
+			}
+			close(itemCh)
+		}()
+	}
 
 	convdb, err := rawdb.NewLevelDBDatabase("verkle", 128, 128, "", false)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	flushCh := make(chan verkle.VerkleNode)
@@ -545,21 +513,39 @@ func doInsertion(ctx *cli.Context) error {
 		}
 	}()
 
-	for elem := range itemCh {
+	subRoots := make([]*verkle.InternalNode, runtime.NumCPU())
+	for i := range itemChs {
+		wg.Add(1)
+		subRoots[i] = verkle.New().(*verkle.InternalNode)
 
-		if time.Since(lastReport) > time.Second*8 {
-			log.Info("Inserting nodes", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-			lastReport = time.Now()
-		}
-		var st = make([]byte, 31)
-		copy(st, elem.stem[:])
-		leaf := verkle.NewLeafNode(st, elem.values)
-		if err := root.(*verkle.InternalNode).InsertStemOrdered(st, leaf, saveverkle); err != nil {
-			log.Warn("Error during insert", "stem", fmt.Sprintf("%x", elem.stem), err, err)
-			return err
-		}
-		count++
+		// save references for the goroutine to capture
+		root := subRoots[i]
+		itemCh := itemChs[i]
+
+		go func() {
+			for elem := range itemCh {
+				var st = make([]byte, 31)
+				copy(st, elem.stem[:])
+				leaf := verkle.NewLeafNode(st, elem.values)
+				leaf.ComputeCommitment()
+				err = root.InsertStemOrdered(st, leaf, saveverkle)
+				if err != nil {
+					panic(err)
+				}
+				atomic.AddUint64(&count, 1)
+				if time.Since(lastReport) > time.Second*8 {
+					log.Info("Traversing state", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+					lastReport = time.Now()
+				}
+			}
+
+			wg.Done()
+		}()
 	}
+	wg.Wait()
+	root := verkle.MergeTrees(subRoots)
+	root.ComputeCommitment()
+	root.(*verkle.InternalNode).Flush(saveverkle)
 	close(flushCh)
 	log.Info("Insertion done", "elems", count, "root commitment", fmt.Sprintf("%x", root.ComputeCommitment().Bytes()), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
