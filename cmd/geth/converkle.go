@@ -71,7 +71,7 @@ func (w *writeBuf) Close() error {
 }
 
 const (
-	numTrees = 16
+	numTrees           = 16
 	numChildrenPerTree = 256 / numTrees
 )
 
@@ -122,7 +122,7 @@ func dumpToDisk(elemCh chan *group) error {
 				dataOffset += uint64(n)
 			}
 		}
-		if err := binary.Write(indexFiles[idx.Stem[0]/numChildrenPerTree.w, binary.LittleEndian, &idx); err != nil {
+		if err := binary.Write(indexFiles[idx.Stem[0]%numTrees].w, binary.LittleEndian, &idx); err != nil {
 			return err
 		} else {
 			indexSize += IdxSize // 43
