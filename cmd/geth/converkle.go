@@ -70,14 +70,17 @@ func (w *writeBuf) Close() error {
 	return w.file.Close()
 }
 
+const (
+	numTrees = 16
+	numChildrenPerTree = 256 / numTrees
+)
+
 // dumpToDisk writes elements from the given chan to file dumps.
 func dumpToDisk(elemCh chan *group) error {
 	var (
-		id         = 0
 		dataOffset = uint64(0)
 		indexSize  = 0
 		dataFile   *writeBuf
-		indexFile  *writeBuf
 		err        error
 	)
 	reopen := func(fname string) (*writeBuf, error) {
@@ -87,14 +90,19 @@ func dumpToDisk(elemCh chan *group) error {
 		}
 		return &writeBuf{f, bufio.NewWriter(f)}, nil
 	}
-	if dataFile, err = reopen(fmt.Sprintf("dump-%02d.verkle", id)); err != nil {
+	if dataFile, err = reopen(fmt.Sprintf("dump-%02d.verkle", 0)); err != nil {
 		return err
 	}
-	if indexFile, err = reopen(fmt.Sprintf("index-%02d.verkle", id)); err != nil {
-		dataFile.Close()
-		return err
+	indexFiles := make([]*writeBuf, numTrees)
+	for id := range indexFiles {
+		if indexFiles[id], err = reopen(fmt.Sprintf("index-%02d.verkle", id)); err != nil {
+			dataFile.Close()
+			return err
+		}
+		log.Info("Opened files", "index", indexFiles[id].file.Name())
+		defer indexFiles[id].Close()
 	}
-	log.Info("Opened files", "data", dataFile.file.Name(), "index", indexFile.file.Name())
+	log.Info("Opened file", "data", dataFile.file.Name())
 
 	for elem := range elemCh {
 		idx := Index{
@@ -114,24 +122,14 @@ func dumpToDisk(elemCh chan *group) error {
 				dataOffset += uint64(n)
 			}
 		}
-		if err := binary.Write(indexFile.w, binary.LittleEndian, &idx); err != nil {
+		if err := binary.Write(indexFiles[idx.Stem[0]/numChildrenPerTree.w, binary.LittleEndian, &idx); err != nil {
 			return err
 		} else {
 			indexSize += IdxSize // 43
 		}
-		if indexSize > 2*1024*1024*1024 {
-			id += 1
-			indexSize = 0
-			indexFile.Close()
-			if indexFile, err = reopen(fmt.Sprintf("index-%02d.verkle", id)); err != nil {
-				dataFile.Close()
-				return err
-			}
-			log.Info("Opened files", "data", dataFile.file.Name(), "index", indexFile.file.Name())
-		}
 	}
 	dataFile.Close()
-	return indexFile.Close()
+	return nil
 }
 
 type slotHash struct {
