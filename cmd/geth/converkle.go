@@ -27,6 +27,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -428,6 +429,8 @@ func doFileSorting(ctx *cli.Context) error {
 }
 
 func sortFiles() error {
+	rootPerCPU := 256 / runtime.NumCPU()
+
 	for id := 0; ; id++ {
 		idxFile := fmt.Sprintf("index-%02d.verkle", id)
 		if _, err := os.Stat(idxFile); err != nil {
@@ -442,8 +445,34 @@ func sortFiles() error {
 		// Sort the data
 		sort.Sort(dataSort(data))
 		log.Info("Sorted file", "name", idxFile)
-		os.WriteFile(idxFile, data, 0600)
-		log.Info("Wrote file", "name", idxFile)
+
+		outputs := make([]*os.File, runtime.NumCPU())
+		for i := 0; i < runtime.NumCPU(); i++ {
+			outputs[i], err = os.OpenFile(fmt.Sprintf("index-%02d-%d.verkle", id, i), os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+			if err != nil {
+				return err
+			}
+		}
+
+		buf := bytes.NewBuffer(data)
+		for {
+			var idx Index
+			err = binary.Read(buf, binary.LittleEndian, &idx)
+
+			if err == io.EOF {
+				break
+			}
+			err = binary.Write(outputs[int(idx.Stem[0])/rootPerCPU], binary.LittleEndian, &idx)
+			if err != nil {
+				return err
+			}
+		}
+
+		for i := 0; i < runtime.NumCPU(); i++ {
+			outputs[i].Close()
+		}
+
+		log.Info("Wrote files", "name", idxFile)
 	}
 	return nil
 }
