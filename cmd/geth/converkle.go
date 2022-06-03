@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -401,31 +400,6 @@ func (d dataSort) Swap(i, j int) {
 
 // doFileSorting sorts the index file.
 func doFileSorting(ctx *cli.Context) error {
-
-	indexName := fmt.Sprintf("index-%02d.verkle", 0)
-	if _, err := os.Stat(indexName); err != nil {
-		// Create some files.
-		log.Info("Writing dummy files")
-		data := make([]byte, 500000*unsafe.Sizeof(Index{}))
-		for id := 0; id < 3; id++ {
-			fName := fmt.Sprintf("dump-%02d.verkle", id)
-			if _, err := rand.Read(data); err != nil {
-				return err
-			}
-			if err := os.WriteFile(fName, data, 0600); err != nil {
-				return err
-			}
-		}
-		log.Info("Wrote files, now for sorting them")
-	}
-	//else {
-	// File(s) exist, use those
-	//}
-
-	return sortFiles()
-}
-
-func sortFiles() error {
 	for id := 0; ; id++ {
 		idxFile := fmt.Sprintf("index-%02d.verkle", id)
 		if _, err := os.Stat(idxFile); err != nil {
