@@ -38,7 +38,16 @@ var (
 	MainStorageOffset   = new(uint256.Int).Lsh(uint256.NewInt(256), 31)
 	VerkleNodeWidth     = uint256.NewInt(256)
 	codeStorageDelta    = uint256.NewInt(0).Sub(CodeOffset, HeaderStorageOffset)
+
+	getTreePolyIndex0Fr    [1]verkle.Fr
+	getTreePolyIndex0Point *verkle.Point
 )
+
+func init() {
+	cfg, _ := verkle.GetConfig()
+	verkle.FromLEBytes(&getTreePolyIndex0Fr[0], []byte{2, 64})
+	getTreePolyIndex0Point = cfg.CommitToPoly(getTreePolyIndex0Fr[:], 1)
+}
 
 // GetTreeKey performs both the work of the spec's get_tree_key function, and that
 // of pedersen_hash: it builds the polynomial in pedersen_hash without having to
@@ -52,8 +61,7 @@ func GetTreeKey(address []byte, treeIndex *uint256.Int, subIndex byte) []byte {
 	}
 	var poly [5]fr.Element
 
-	// (2 + 256 * length) little endian, length = 64 bytes
-	verkle.FromLEBytes(&poly[0], []byte{2, 64})
+	poly[0].SetZero()
 
 	// 32-byte address, interpreted as two little endian
 	// 16-byte numbers.
@@ -70,7 +78,20 @@ func GetTreeKey(address []byte, treeIndex *uint256.Int, subIndex byte) []byte {
 
 	cfg, _ := verkle.GetConfig()
 	ret := cfg.CommitToPoly(poly[:], 0)
-	retb := ret.Bytes()
+
+	// add a constant point
+	ret.Add(ret, getTreePolyIndex0Point)
+
+	// The output of Byte() is big engian for banderwagon. This
+	// introduces an inbalance in the tree, because hashes are
+	// elements of a 253-bit field. This means more than half the
+	// tree would be empty. To avoid this problem, use a little
+	// endian commitment and chop the MSB.
+	var retb [32]byte
+	retb = ret.Bytes()
+	for i := 0; i < 16; i++ {
+		retb[31-i], retb[i] = retb[i], retb[31-i]
+	}
 	retb[31] = subIndex
 	return retb[:]
 
