@@ -161,8 +161,7 @@ func gasSLoad(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySiz
 
 	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
 		where := stack.Back(0)
-		addr := contract.Address()
-		index := trieUtils.GetTreeKeyStorageSlot(addr[:], where)
+		index := trieUtils.GetTreeKeyStorageSlotWithEvaluatedAddress(contract.AddressPoint(), where)
 		usedGas += evm.Accesses.TouchAddressOnReadAndComputeGas(index)
 	}
 
