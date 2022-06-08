@@ -185,7 +185,7 @@ func getTreeKeyWithEvaluatedAddess(evaluated *verkle.Point, treeIndex *uint256.I
 
 }
 
-func evaluateAddressPoint(address []byte) *verkle.Point {
+func EvaluateAddressPoint(address []byte) *verkle.Point {
 	if len(address) < 32 {
 		var aligned [32]byte
 		address = append(aligned[:32-len(address)], address...)
