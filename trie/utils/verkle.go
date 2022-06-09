@@ -17,9 +17,10 @@
 package utils
 
 import (
+	"encoding/binary"
+
 	"github.com/crate-crypto/go-ipa/bandersnatch/fr"
 	"github.com/gballet/go-verkle"
-
 	"github.com/holiman/uint256"
 )
 
@@ -60,8 +61,6 @@ func GetTreeKey(address []byte, treeIndex *uint256.Int, subIndex byte) []byte {
 		address = append(aligned[:32-len(address)], address...)
 	}
 	var poly [5]fr.Element
-
-	poly[0].SetZero()
 
 	// 32-byte address, interpreted as two little endian
 	// 16-byte numbers.
@@ -152,14 +151,14 @@ func GetTreeKeyStorageSlot(address []byte, storageKey *uint256.Int) []byte {
 func getTreeKeyWithEvaluatedAddess(evaluated *verkle.Point, treeIndex *uint256.Int, subIndex byte) []byte {
 	var poly [5]fr.Element
 
-	poly[0].SetZero()
-	poly[1].SetZero()
-	poly[2].SetZero()
-
 	// little-endian, 32-byte aligned treeIndex
 	var index [32]byte
-	for i, b := range treeIndex.Bytes() {
-		index[len(treeIndex.Bytes())-1-i] = b
+	{
+		var z = treeIndex
+		binary.LittleEndian.PutUint64(index[24:32], z[3])
+		binary.LittleEndian.PutUint64(index[16:24], z[2])
+		binary.LittleEndian.PutUint64(index[8:16], z[1])
+		binary.LittleEndian.PutUint64(index[0:8], z[0])
 	}
 	verkle.FromLEBytes(&poly[3], index[:16])
 	verkle.FromLEBytes(&poly[4], index[16:])
@@ -191,8 +190,6 @@ func EvaluateAddressPoint(address []byte) *verkle.Point {
 		address = append(aligned[:32-len(address)], address...)
 	}
 	var poly [3]fr.Element
-
-	poly[0].SetZero()
 
 	// 32-byte address, interpreted as two little endian
 	// 16-byte numbers.
