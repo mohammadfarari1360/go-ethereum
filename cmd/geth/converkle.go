@@ -321,8 +321,9 @@ func convertToVerkle(ctx *cli.Context) error {
 		// Save every slot into the tree
 		if slotCh != nil {
 			var (
-				laststem [31]byte
-				values   = make([][]byte, 256)
+				laststem  [31]byte
+				values    = make([][]byte, 256)
+				addrpoint = trieUtils.EvaluateAddressPoint(accHash.Bytes())
 			)
 			copy(laststem[:], stem)
 			for sh := range slotCh {
@@ -330,7 +331,7 @@ func convertToVerkle(ctx *cli.Context) error {
 					log.Info("Traversing state", "accounts", accounts, "in", accHash.String(), "elapsed", common.PrettyDuration(time.Since(start)))
 					lastReport = time.Now()
 				}
-				slotkey := trieUtils.GetTreeKeyStorageSlot(accHash.Bytes(), uint256.NewInt(0).SetBytes(sh.hash.Bytes()))
+				slotkey := trieUtils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrpoint, uint256.NewInt(0).SetBytes(sh.hash.Bytes()))
 				var value [32]byte
 				copy(value[:len(sh.slot)-1], sh.slot)
 
