@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -138,13 +139,17 @@ type slotHash struct {
 	hash common.Hash
 }
 
-func iterateSlots(slotCh chan *slotHash, storageIt snapshot.StorageIterator) {
+func iterateSlots(slotCh chan *slotHash, storageIt snapshot.StorageIterator, chaindb ethdb.Database) {
 	defer storageIt.Release()
 	for storageIt.Next() {
 		var slot [32]byte
+		slotNum := rawdb.ReadPreimage(chaindb, storageIt.Hash())
+		if len(slotNum) == 0 {
+			panic(fmt.Sprintf("no preimage for %x", storageIt.Hash().Bytes()))
+		}
 		copy(slot[:], storageIt.Slot())
 		slotCh <- &slotHash{
-			hash: storageIt.Hash(),
+			hash: common.BytesToHash(slotNum),
 			slot: slot[:],
 		}
 	}
@@ -231,6 +236,10 @@ func convertToVerkle(ctx *cli.Context) error {
 			if !bytes.Equal(acc.CodeHash, emptyCode) {
 				code = rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
 			}
+			addr := rawdb.ReadPreimage(chaindb, accIt.Hash())
+			if len(addr) == 0 {
+				panic(fmt.Sprintf("no preimage for %x", accIt.Hash().Bytes()))
+			}
 			accountCh <- &accHash{
 				account: acc,
 				hash:    accIt.Hash(),
@@ -265,7 +274,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			// TODO these aren't properly stopped in case of errors / aborts
 			// TODO instead of firing up a new goroutine each time, just pass
 			// the iterator to a persistent routine (which also handles aborts properly)
-			go iterateSlots(slotCh, storageIt)
+			go iterateSlots(slotCh, storageIt, chaindb)
 		}
 
 		// Store the basic account data
