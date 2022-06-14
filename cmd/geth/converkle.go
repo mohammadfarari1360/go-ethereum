@@ -230,6 +230,7 @@ func convertToVerkle(ctx *cli.Context) error {
 	type accHash struct {
 		account snapshot.Account
 		hash    common.Hash
+		addr    []byte
 		code    []byte
 	}
 	// accounts are pretty small, buffering 100 of them isn't a biggie
@@ -259,6 +260,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			accountCh <- &accHash{
 				account: acc,
 				hash:    accIt.Hash(),
+				addr:    addr,
 				code:    code,
 			}
 		}
