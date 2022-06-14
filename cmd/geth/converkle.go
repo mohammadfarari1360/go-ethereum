@@ -44,6 +44,7 @@ import (
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 	"github.com/golang/snappy"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -141,15 +142,30 @@ type slotHash struct {
 
 func iterateSlots(slotCh chan *slotHash, storageIt snapshot.StorageIterator, chaindb ethdb.Database) {
 	defer storageIt.Release()
+	cache, err := lru.New(1_000_000) // Keysize: 32 byte, Valuesize: 32 byte, 1M items -> 64M memory
+	if err != nil {
+		panic(err)
+	}
 	for storageIt.Next() {
-		var slot [32]byte
-		slotNum := rawdb.ReadPreimage(chaindb, storageIt.Hash())
-		if len(slotNum) == 0 {
-			panic(fmt.Sprintf("no preimage for %x", storageIt.Hash().Bytes()))
+		var (
+			h        = storageIt.Hash()
+			slot     [32]byte
+			preimage common.Hash
+		)
+		// lookup preimage
+		if v, ok := cache.Get(h); ok {
+			preimage = v.(common.Hash)
+		} else {
+			if slotNum := rawdb.ReadPreimage(chaindb, h); len(slotNum) == 0 {
+				panic(fmt.Sprintf("no preimage for %x", h.Bytes()))
+			} else {
+				preimage = common.BytesToHash(slotNum)
+			}
+			cache.Add(h, preimage)
 		}
 		copy(slot[:], storageIt.Slot())
 		slotCh <- &slotHash{
-			hash: common.BytesToHash(slotNum),
+			hash: preimage,
 			slot: slot[:],
 		}
 	}
