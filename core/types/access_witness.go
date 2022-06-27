@@ -291,7 +291,7 @@ func (aw *AccessWitness) SetLeafValuesContractCreateCompleted(addr, codeSize, co
 	aw.SetLeafValue(utils.GetTreeKeyCodeKeccak(addr[:]), codeKeccak)
 }
 
-func (aw *AccessWitness) TouchTxOriginAndComputeGas(originAddr []byte, sendsValue bool) uint64 {
+func (aw *AccessWitness) TouchTxOriginAndComputeGas(originAddr []byte) uint64 {
 	var gasUsed uint64
 	gasUsed += aw.TouchAddressOnReadAndComputeGas(utils.GetTreeKeyVersion(originAddr[:]))
 	gasUsed += aw.TouchAddressOnReadAndComputeGas(utils.GetTreeKeyCodeKeccak(originAddr[:]))
@@ -299,9 +299,6 @@ func (aw *AccessWitness) TouchTxOriginAndComputeGas(originAddr []byte, sendsValu
 	gasUsed += aw.TouchAddressOnWriteAndComputeGas(utils.GetTreeKeyNonce(originAddr[:]))
 	gasUsed += aw.TouchAddressOnWriteAndComputeGas(utils.GetTreeKeyBalance(originAddr[:]))
 
-	if sendsValue {
-		gasUsed += aw.TouchAddressOnWriteAndComputeGas(utils.GetTreeKeyBalance(originAddr[:]))
-	}
 	return gasUsed
 }
 
