@@ -132,6 +132,17 @@ func GetTreeKeyCodeChunk(address []byte, chunk *uint256.Int) []byte {
 	return GetTreeKey(address, treeIndex, subIndex)
 }
 
+func GetTreeKeyCodeChunkWithEvaluatedAddress(addressPoint *verkle.Point, chunk *uint256.Int) []byte {
+	chunkOffset := new(uint256.Int).Add(CodeOffset, chunk)
+	treeIndex := new(uint256.Int).Div(chunkOffset, VerkleNodeWidth)
+	subIndexMod := new(uint256.Int).Mod(chunkOffset, VerkleNodeWidth).Bytes()
+	var subIndex byte
+	if len(subIndexMod) != 0 {
+		subIndex = subIndexMod[0]
+	}
+	return getTreeKeyWithEvaluatedAddess(addressPoint, treeIndex, subIndex)
+}
+
 func GetTreeKeyStorageSlot(address []byte, storageKey *uint256.Int) []byte {
 	pos := storageKey.Clone()
 	if storageKey.Cmp(codeStorageDelta) < 0 {
