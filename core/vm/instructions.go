@@ -423,7 +423,7 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, addrPoint *verkle.Po
 			panic("overflow when adding gas")
 		}
 
-		if code != nil && len(code) > 0 {
+		if len(code) > 0 {
 			if deployment {
 				accesses.SetLeafValue(index[:], nil)
 			} else {
@@ -928,7 +928,7 @@ func opPush1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 		if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) && *pc%31 == 0 {
 			// touch next chunk if PUSH1 is at the boundary. if so, *pc has
 			// advanced past this boundary.
-			statelessGas := touchEachChunksOnReadAndChargeGas(uint64(*pc+1), uint64(1), scope.Contract.AddressPoint(), scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment)
+			statelessGas := touchEachChunksOnReadAndChargeGas(*pc+1, uint64(1), scope.Contract.AddressPoint(), scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment)
 			scope.Contract.UseGas(statelessGas)
 		}
 	} else {

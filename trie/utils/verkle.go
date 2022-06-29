@@ -83,12 +83,11 @@ func GetTreeKey(address []byte, treeIndex *uint256.Int, subIndex byte) []byte {
 	ret.Add(ret, getTreePolyIndex0Point)
 
 	// The output of Byte() is big engian for banderwagon. This
-	// introduces an inbalance in the tree, because hashes are
+	// introduces an imbalance in the tree, because hashes are
 	// elements of a 253-bit field. This means more than half the
 	// tree would be empty. To avoid this problem, use a little
 	// endian commitment and chop the MSB.
-	var retb [32]byte
-	retb = ret.Bytes()
+	retb := ret.Bytes()
 	for i := 0; i < 16; i++ {
 		retb[31-i], retb[i] = retb[i], retb[31-i]
 	}
@@ -160,7 +159,7 @@ func GetTreeKeyStorageSlot(address []byte, storageKey *uint256.Int) []byte {
 		// uint256 is broken into 4 little-endian quads,
 		// each with native endianness. Extract the least
 		// significant byte.
-		subIndex = byte(subIndexMod[0] & 0xFF)
+		subIndex = subIndexMod[0] & 0xFF
 	}
 	return GetTreeKey(address, treeIndex, subIndex)
 }
@@ -187,12 +186,11 @@ func getTreeKeyWithEvaluatedAddess(evaluated *verkle.Point, treeIndex *uint256.I
 	ret.Add(ret, evaluated)
 
 	// The output of Byte() is big engian for banderwagon. This
-	// introduces an inbalance in the tree, because hashes are
+	// introduces an imbalance in the tree, because hashes are
 	// elements of a 253-bit field. This means more than half the
 	// tree would be empty. To avoid this problem, use a little
 	// endian commitment and chop the MSB.
-	var retb [32]byte
-	retb = ret.Bytes()
+	retb := ret.Bytes()
 	for i := 0; i < 16; i++ {
 		retb[31-i], retb[i] = retb[i], retb[31-i]
 	}
@@ -240,7 +238,7 @@ func GetTreeKeyStorageSlotWithEvaluatedAddress(evaluated *verkle.Point, storageK
 		// uint256 is broken into 4 little-endian quads,
 		// each with native endianness. Extract the least
 		// significant byte.
-		subIndex = byte(subIndexMod[0] & 0xFF)
+		subIndex = subIndexMod[0] & 0xFF
 	}
 	return getTreeKeyWithEvaluatedAddess(evaluated, treeIndex, subIndex)
 }
