@@ -133,11 +133,16 @@ func newObject(db *StateDB, address common.Address, data types.StateAccount) *st
 	if data.Root == (common.Hash{}) {
 		data.Root = emptyRoot
 	}
+	var pointEval *verkle.Point
+	if db.GetTrie().IsVerkle() {
+		pointEval = trieUtils.EvaluateAddressPoint(address.Bytes())
+	}
+
 	return &stateObject{
 		db:             db,
 		address:        address,
 		addrHash:       crypto.Keccak256Hash(address[:]),
-		pointEval:      trieUtils.EvaluateAddressPoint(address.Bytes()),
+		pointEval:      pointEval,
 		data:           data,
 		originStorage:  make(Storage),
 		pendingStorage: make(Storage),
