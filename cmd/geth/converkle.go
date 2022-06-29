@@ -428,11 +428,30 @@ func (d dataSort) Swap(i, j int) {
 
 // doFileSorting sorts the index file.
 func doFileSorting(ctx *cli.Context) error {
+	dataFile, err := os.Open("dump-00.verkle")
+	if err != nil {
+		return err
+	}
+	outFile, err := os.OpenFile("dump-01.verkle", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	outBuf := bufio.NewWriter(outFile)
+	var dataOffset uint64
+
 	for id := 0; ; id++ {
 		idxFile := fmt.Sprintf("index-%02d.verkle", id)
 		if _, err := os.Stat(idxFile); err != nil {
 			break
 		}
+		outIdxFile, err := os.OpenFile("sorted-"+idxFile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+		defer outIdxFile.Close()
+		outIdxBuf := bufio.NewWriter(outIdxFile)
+
 		log.Info("Processing indexfile", "name", idxFile)
 		data, err := os.ReadFile(idxFile)
 		if err != nil {
@@ -442,6 +461,68 @@ func doFileSorting(ctx *cli.Context) error {
 		// Sort the data
 		sort.Sort(dataSort(data))
 		log.Info("Sorted file", "name", idxFile)
+
+		buf := bytes.NewBuffer(data)
+		var idx Index
+		err = binary.Read(buf, binary.LittleEndian, &idx)
+		for err != io.EOF {
+			// Read the data
+			valuesSerializedCompressed := make([]byte, idx.Size)
+			var n int
+			n, err = dataFile.ReadAt(valuesSerializedCompressed, int64(idx.Offset))
+			if err != nil {
+				return fmt.Errorf("error reading data: %w size=%d != %d", err, n, idx.Size)
+			}
+			data, err := snappy.Decode(nil, valuesSerializedCompressed)
+			if err != nil {
+				return fmt.Errorf("error decompressing data: %w", err)
+			}
+			var element group
+			rlp.DecodeBytes(data, &element.values)
+
+			var index Index
+			err = binary.Read(buf, binary.LittleEndian, &index)
+
+			// Merge all consecutive values
+			for bytes.Equal(index.Stem[:], idx.Stem[:]) {
+				compressed := make([]byte, index.Size)
+				_, err = dataFile.ReadAt(compressed, int64(index.Offset))
+				if err != nil {
+					return err
+				}
+				d, e := snappy.Decode(nil, compressed)
+				if e != nil {
+					return e
+				}
+				var vals [][]byte
+				rlp.DecodeBytes(d, vals)
+
+				for i, v := range vals {
+					if len(v) == 0 {
+						if len(element.values[i]) == 0 {
+							element.values[i] = vals[i]
+						} else {
+							return fmt.Errorf("value being overwritten at %x", index.Stem)
+						}
+					}
+				}
+
+				err = binary.Read(buf, binary.LittleEndian, &index)
+			}
+
+			idx.Offset = dataOffset
+			binary.Write(outIdxBuf, binary.LittleEndian, idx)
+			payload, e := rlp.EncodeToBytes(element.values)
+			if e != nil {
+				return e
+			}
+			payload = snappy.Encode(nil, payload)
+			idx.Size = uint32(len(payload))
+			dataOffset += uint64(idx.Size)
+			outBuf.Write(payload)
+			idx = index
+		}
+
 		os.WriteFile(idxFile, data, 0600)
 		log.Info("Wrote file", "name", idxFile)
 	}
