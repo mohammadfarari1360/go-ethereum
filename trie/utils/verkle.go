@@ -40,13 +40,15 @@ var (
 	codeStorageDelta    = uint256.NewInt(0).Sub(CodeOffset, HeaderStorageOffset)
 
 	getTreePolyIndex0Fr    [1]verkle.Fr
-	getTreePolyIndex0Point *verkle.Point
+	getTreePolyIndex0Point = new(verkle.Point)
 )
 
 func init() {
-	cfg, _ := verkle.GetConfig()
-	verkle.FromLEBytes(&getTreePolyIndex0Fr[0], []byte{2, 64})
-	getTreePolyIndex0Point = cfg.CommitToPoly(getTreePolyIndex0Fr[:], 1)
+	// The byte array is the Marshalled output of the point computed as such:
+	//cfg, _ := verkle.GetConfig()
+	//verkle.FromLEBytes(&getTreePolyIndex0Fr[0], []byte{2, 64})
+	//= cfg.CommitToPoly(getTreePolyIndex0Fr[:], 1)
+	getTreePolyIndex0Point.Unmarshal([]byte{105, 89, 33, 220, 163, 177, 108, 92, 200, 80, 233, 76, 221, 99, 245, 115, 196, 103, 102, 158, 137, 206, 200, 137, 53, 208, 52, 116, 214, 189, 249, 212})
 }
 
 // GetTreeKey performs both the work of the spec's get_tree_key function, and that
