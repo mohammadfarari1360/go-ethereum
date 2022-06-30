@@ -762,7 +762,8 @@ func convertToVerkle(ctx *cli.Context) error {
 		if len(addr) == 0 {
 			return fmt.Errorf("no preimage for %x", accIt.Hash().Bytes())
 		}
-		stem := trieUtils.GetTreeKeyVersion(addr)[:]
+		evalAddr := trieUtils.EvaluateAddressPoint(addr)
+		stem := trieUtils.GetTreeKeyVersion(addr)[:31]
 
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
@@ -778,7 +779,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 			for i := 128; i < len(chunks); {
 				values := make([][]byte, 256)
-				chunkkey := trieUtils.GetTreeKeyCodeChunk(addr, uint256.NewInt(uint64(i)))
+				chunkkey := trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(evalAddr, uint256.NewInt(uint64(i)))
 				j := i
 				for ; (j-i) < 256 && j < len(chunks); j++ {
 					values[(j-128)%256] = chunks[j][:]
@@ -814,7 +815,7 @@ func convertToVerkle(ctx *cli.Context) error {
 				if len(slot) == 0 {
 					return fmt.Errorf("no preimage for %x", storageIt.Hash().Bytes())
 				}
-				slotkey := trieUtils.GetTreeKeyStorageSlot(addr, uint256.NewInt(0).SetBytes(slot))
+				slotkey := trieUtils.GetTreeKeyStorageSlotWithEvaluatedAddress(evalAddr, uint256.NewInt(0).SetBytes(slot))
 
 				var value [32]byte
 				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
