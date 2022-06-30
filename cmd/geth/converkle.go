@@ -475,13 +475,16 @@ func doFileSorting(ctx *cli.Context) error {
 			}
 			data, err := snappy.Decode(nil, valuesSerializedCompressed)
 			if err != nil {
-				return fmt.Errorf("error decompressing data: %w", err)
+				return fmt.Errorf("error decompressing data: %w %v %x", err, idx, valuesSerializedCompressed)
 			}
 			var element group
 			rlp.DecodeBytes(data, &element.values)
 
 			var index Index
 			err = binary.Read(buf, binary.LittleEndian, &index)
+			if err == io.EOF {
+				break
+			}
 
 			// Merge all consecutive values
 			for bytes.Equal(index.Stem[:], idx.Stem[:]) {
@@ -508,6 +511,9 @@ func doFileSorting(ctx *cli.Context) error {
 				}
 
 				err = binary.Read(buf, binary.LittleEndian, &index)
+				if err == io.EOF {
+					break
+				}
 			}
 
 			idx.Offset = dataOffset
@@ -523,9 +529,10 @@ func doFileSorting(ctx *cli.Context) error {
 			idx = index
 		}
 
-		os.WriteFile(idxFile, data, 0600)
+		outIdxBuf.Flush()
 		log.Info("Wrote file", "name", idxFile)
 	}
+	outBuf.Flush()
 	return nil
 }
 
