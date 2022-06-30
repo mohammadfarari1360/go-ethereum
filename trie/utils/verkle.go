@@ -39,8 +39,7 @@ var (
 	VerkleNodeWidth     = uint256.NewInt(256)
 	codeStorageDelta    = uint256.NewInt(0).Sub(CodeOffset, HeaderStorageOffset)
 
-	getTreePolyIndex0Fr    [1]verkle.Fr
-	getTreePolyIndex0Point = new(verkle.Point)
+	getTreePolyIndex0Point *verkle.Point
 )
 
 func init() {
@@ -48,7 +47,11 @@ func init() {
 	//cfg, _ := verkle.GetConfig()
 	//verkle.FromLEBytes(&getTreePolyIndex0Fr[0], []byte{2, 64})
 	//= cfg.CommitToPoly(getTreePolyIndex0Fr[:], 1)
-	getTreePolyIndex0Point.Unmarshal([]byte{105, 89, 33, 220, 163, 177, 108, 92, 200, 80, 233, 76, 221, 99, 245, 115, 196, 103, 102, 158, 137, 206, 200, 137, 53, 208, 52, 116, 214, 189, 249, 212})
+	getTreePolyIndex0Point = new(verkle.Point)
+	err := getTreePolyIndex0Point.SetBytes([]byte{84, 249, 189, 214, 116, 52, 208, 53, 137, 200, 206, 137, 158, 102, 103, 196, 115, 245, 99, 221, 76, 233, 80, 200, 92, 108, 177, 163, 220, 33, 89, 105})
+	if err != nil {
+		panic(err)
+	}
 }
 
 // GetTreeKey performs both the work of the spec's get_tree_key function, and that
