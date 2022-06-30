@@ -207,11 +207,6 @@ func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[string][]byte) (
 
 type set = map[string]struct{}
 
-func hasKey(s set, key []byte) bool {
-	_, ok := s[string(key)]
-	return ok
-}
-
 func addKey(s set, key []byte) {
 	s[string(key)] = struct{}{}
 }

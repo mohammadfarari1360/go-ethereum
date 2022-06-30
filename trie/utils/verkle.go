@@ -19,7 +19,6 @@ package utils
 import (
 	"github.com/crate-crypto/go-ipa/bandersnatch/fr"
 	"github.com/gballet/go-verkle"
-
 	"github.com/holiman/uint256"
 )
 
@@ -48,7 +47,7 @@ func init() {
 	//verkle.FromLEBytes(&getTreePolyIndex0Fr[0], []byte{2, 64})
 	//= cfg.CommitToPoly(getTreePolyIndex0Fr[:], 1)
 	getTreePolyIndex0Point = new(verkle.Point)
-	err := getTreePolyIndex0Point.SetBytes([]byte{84, 249, 189, 214, 116, 52, 208, 53, 137, 200, 206, 137, 158, 102, 103, 196, 115, 245, 99, 221, 76, 233, 80, 200, 92, 108, 177, 163, 220, 33, 89, 105})
+	err := getTreePolyIndex0Point.SetBytes([]byte{34, 25, 109, 242, 193, 5, 144, 224, 76, 52, 189, 92, 197, 126, 9, 145, 27, 152, 199, 130, 165, 3, 210, 27, 193, 131, 142, 28, 110, 26, 16, 191})
 	if err != nil {
 		panic(err)
 	}
