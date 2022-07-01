@@ -54,4 +54,11 @@ jobs:
       run: wget -nv https://github.com/gballet/go-verkle/releases/download/banderwagon/precomp
 
     - name: Test
-      run: go test ./...
+      run: |
+        echo $PATH
+        echo $GOPATH
+        go get golang.org/x/mobile/cmd/gomobile
+        go install golang.org/x/mobile/cmd/gomobile
+        export PATH=$PATH:$HOME/go/bin
+        gomobile init
+        go test ./...
