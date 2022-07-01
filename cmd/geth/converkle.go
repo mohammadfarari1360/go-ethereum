@@ -537,14 +537,14 @@ func doFileSorting(ctx *cli.Context) error {
 }
 
 func readDataDump(itemCh chan group, abortCh chan struct{}, cpuNumber int) error {
-	dataFile, err := os.Open("dump-00.verkle")
+	dataFile, err := os.Open("dump-01.verkle")
 	if err != nil {
 		return err
 	}
 	defer dataFile.Close()
 
 	// open all the files and read the first record of each
-	idxFile, err := os.Open(fmt.Sprintf("index-%02d.verkle", cpuNumber))
+	idxFile, err := os.Open(fmt.Sprintf("sorted-index-%02d.verkle", cpuNumber))
 	if err != nil {
 		return err
 	}
