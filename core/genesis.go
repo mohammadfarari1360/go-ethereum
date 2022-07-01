@@ -263,7 +263,6 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	header := rawdb.ReadHeader(db, stored, 0)
 
 	var trieCfg *trie.Config
-
 	if genesis == nil {
 		storedcfg := rawdb.ReadChainConfig(db, stored)
 		if storedcfg == nil {
@@ -276,6 +275,10 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 			}
 
 			trieCfg = &trie.Config{UseVerkle: storedcfg.IsCancun(big.NewInt(header.Number.Int64()))}
+		}
+	} else {
+		trieCfg = &trie.Config{
+			UseVerkle: genesis.Config.IsCancun(big.NewInt(0)),
 		}
 	}
 
