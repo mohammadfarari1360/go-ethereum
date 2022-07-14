@@ -62,15 +62,19 @@ func (trie *VerkleTrie) TryGet(key []byte) ([]byte, error) {
 	return trie.root.Get(key, trie.db.DiskDB().Get)
 }
 
-func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
+func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount, extra interface{}) error {
 	var (
 		err                                error
 		nonce, balance                     [32]byte
 		balancekey, cskey, ckkey, noncekey [32]byte
 	)
 
-	// Only evaluate the polynomial once
-	versionkey := utils.GetTreeKeyVersion(key[:])
+	// Reuse the evaluated polynomial in order to
+	evaluatedPoint, available := extra.(*verkle.Point)
+	if !available {
+		return errors.New("TryUpdateAccount: evaluated account point is missing")
+	}
+	versionkey := utils.GetTreeKeyVersionWithEvaluatedAddress(evaluatedPoint)
 	copy(balancekey[:], versionkey)
 	balancekey[31] = utils.BalanceLeafKey
 	copy(noncekey[:], versionkey)

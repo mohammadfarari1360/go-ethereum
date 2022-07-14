@@ -168,6 +168,20 @@ func GetTreeKeyStorageSlot(address []byte, storageKey *uint256.Int) []byte {
 	return GetTreeKey(address, treeIndex, subIndex)
 }
 
+func GetTreeKeyVersionWithEvaluatedAddress(evaluated *verkle.Point) []byte {
+	// The output of Byte() is big engian for banderwagon. This
+	// introduces an imbalance in the tree, because hashes are
+	// elements of a 253-bit field. This means more than half the
+	// tree would be empty. To avoid this problem, use a little
+	// endian commitment and chop the MSB.
+	retb := evaluated.Bytes()
+	for i := 0; i < 16; i++ {
+		retb[31-i], retb[i] = retb[i], retb[31-i]
+	}
+	retb[31] = VersionLeafKey
+	return retb[:]
+}
+
 func getTreeKeyWithEvaluatedAddess(evaluated *verkle.Point, treeIndex *uint256.Int, subIndex byte) []byte {
 	var poly [5]fr.Element
 
@@ -200,7 +214,6 @@ func getTreeKeyWithEvaluatedAddess(evaluated *verkle.Point, treeIndex *uint256.I
 	}
 	retb[31] = subIndex
 	return retb[:]
-
 }
 
 func EvaluateAddressPoint(address []byte) *verkle.Point {
