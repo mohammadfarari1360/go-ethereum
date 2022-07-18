@@ -254,8 +254,7 @@ func (aw *AccessWitness) getTreeKeyHeader(addr []byte) *verkle.Point {
 
 func (aw *AccessWitness) GetTreeKeyVersionCached(addr []byte) []byte {
 	p := aw.getTreeKeyHeader(addr)
-	v := p.Bytes()
-	v[31] = utils.VersionLeafKey
+	v := utils.PointToHash(p, utils.VersionLeafKey)
 	return v[:]
 }
 
