@@ -234,6 +234,7 @@ func (aw *AccessWitness) Copy() *AccessWitness {
 		Branches:     make(map[VerkleStem]Mode),
 		Chunks:       make(map[common.Hash]Mode),
 		InitialValue: make(map[string][]byte),
+		addrToPoint:  make(map[string]*verkle.Point),
 	}
 
 	naw.Merge(aw)
