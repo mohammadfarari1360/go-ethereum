@@ -144,6 +144,8 @@ func CommitGenesisState(db ethdb.Database, hash common.Hash) error {
 			genesis = DefaultGoerliGenesisBlock()
 		case params.SepoliaGenesisHash:
 			genesis = DefaultSepoliaGenesisBlock()
+		case params.GnosisChainHash:
+			genesis = DefaultGnosisGenesisBlock()
 		}
 		if genesis != nil {
 			alloc = genesis.Alloc
@@ -342,6 +344,8 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return params.GoerliChainConfig
 	case ghash == params.KilnGenesisHash:
 		return DefaultKilnGenesisBlock().Config
+	case ghash == params.GnosisChainHash:
+		return params.GnosisChainConfig
 	default:
 		return params.AllEthashProtocolChanges
 	}
@@ -505,6 +509,31 @@ func DefaultKilnGenesisBlock() *Genesis {
 		panic(err)
 	}
 	return g
+}
+
+// DefaultSepoliaGenesisBlock returns the Sepolia network genesis block.
+func DefaultGnosisGenesisBlock() *Genesis {
+	return &Genesis{
+		Config:     params.GnosisChainConfig,
+		Nonce:      0,
+		GasLimit:   0x989680,
+		Difficulty: big.NewInt(0x20000),
+		Timestamp:  1538998020,
+		Alloc: GenesisAlloc{
+			common.HexToAddress("0x0000000000000000000000000000000000000001"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+			common.HexToAddress("0x0000000000000000000000000000000000000002"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+			common.HexToAddress("0x0000000000000000000000000000000000000003"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+			common.HexToAddress("0x0000000000000000000000000000000000000004"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+		},
+	}
 }
 
 // DeveloperGenesisBlock returns the 'geth --dev' genesis block.
