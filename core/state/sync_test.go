@@ -472,7 +472,7 @@ func TestIncompleteStateSync(t *testing.T) {
 			val     []byte
 		)
 		if code {
-			val = rawdb.ReadCode(dstDb, node)
+			val, _ = rawdb.ReadCode(dstDb, node)
 			rawdb.DeleteCode(dstDb, node)
 		} else {
 			val = rawdb.ReadTrieNode(dstDb, node)

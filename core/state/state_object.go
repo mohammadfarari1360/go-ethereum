@@ -83,8 +83,9 @@ type stateObject struct {
 	dbErr error
 
 	// Write caches.
-	trie Trie // storage trie, which becomes non-nil on first access
-	code Code // contract bytecode, which gets set when code is loaded
+	trie   Trie                  // storage trie, which becomes non-nil on first access
+	code   Code                  // contract bytecode, which gets set when code is loaded
+	chunks trieUtils.ChunkedCode // chunked contract bytecode, which gets set when the code is loaded
 
 	originStorage  Storage // Storage cache of original entries to dedup rewrites, reset for every transaction
 	pendingStorage Storage // Storage entries that need to be flushed to disk, at the end of an entire block

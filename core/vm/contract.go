@@ -57,6 +57,7 @@ type Contract struct {
 	analysis  bitvec                 // Locally cached result of JUMPDEST analysis
 
 	Code     []byte
+	Chunks   utils.ChunkedCode
 	CodeHash common.Hash
 	CodeAddr *common.Address
 	Input    []byte
@@ -193,8 +194,9 @@ func (c *Contract) Value() *big.Int {
 
 // SetCallCode sets the code of the contract and address of the backing data
 // object
-func (c *Contract) SetCallCode(addr *common.Address, hash common.Hash, code []byte) {
+func (c *Contract) SetCallCode(addr *common.Address, hash common.Hash, code []byte, chunks []byte) {
 	c.Code = code
+	c.Chunks = chunks
 	c.CodeHash = hash
 	c.CodeAddr = addr
 }

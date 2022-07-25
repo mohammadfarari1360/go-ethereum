@@ -302,7 +302,7 @@ func (s *Sync) Commit(dbw ethdb.Batch) error {
 		rawdb.WriteTrieNode(dbw, key, value)
 	}
 	for key, value := range s.membatch.codes {
-		rawdb.WriteCode(dbw, key, value)
+		rawdb.WriteCode(dbw, key, value, nil)
 	}
 	// Drop the membatch data and return
 	s.membatch = newSyncMemBatch()

@@ -514,9 +514,10 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 			}
 
 			if obj.dirtyCode {
-				if chunks, err := trie.ChunkifyCode(obj.code); err == nil {
-					for i := range chunks {
-						s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i))), chunks[i][:])
+				var err error
+				if obj.chunks, err = trieUtils.ChunkifyCode(obj.code); err == nil {
+					for i := range obj.chunks {
+						s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i))), obj.chunks[32*i:32*(i+1)])
 					}
 				} else {
 					s.setError(err)
@@ -1009,16 +1010,12 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 			storageCommitted += committed
 			// Write any contract code associated with the state object
 			if obj.code != nil && obj.dirtyCode {
-				if s.trie.IsVerkle() {
-					if chunks, err := trie.ChunkifyCode(obj.code); err == nil {
-						for i := range chunks {
-							s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i))), chunks[i][:])
-						}
-					} else {
-						s.setError(err)
+				if len(obj.chunks) != 0 {
+					for i := range obj.chunks {
+						s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i))), obj.chunks[i*32:(i+1)*32])
 					}
 				}
-				rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
+				rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code, obj.chunks)
 				obj.dirtyCode = false
 			}
 		}

@@ -511,7 +511,7 @@ func dumpState(ctx *cli.Context) error {
 			SecureKey: accIt.Hash().Bytes(),
 		}
 		if !conf.SkipCode && !bytes.Equal(account.CodeHash, emptyCode) {
-			da.Code = rawdb.ReadCode(db, common.BytesToHash(account.CodeHash))
+			da.Code, _ = rawdb.ReadCode(db, common.BytesToHash(account.CodeHash))
 		}
 		if !conf.SkipStorage {
 			da.Storage = make(map[common.Hash]string)

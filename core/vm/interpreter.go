@@ -22,7 +22,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
 )
@@ -158,8 +157,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		logged  bool   // deferred EVMLogger should ignore already logged steps
 		res     []byte // result of the opcode execution function
 
-		chunks     [][32]byte
-		chunkEvals [][]byte
+		chunkEvals [][]byte // TODO: also store evals? 🤔
 	)
 	// Don't move this deferred function, it's placed before the capturestate-deferred method,
 	// so that it get's executed _after_: the capturestate needs the stacks before
@@ -183,8 +181,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	// Evaluate one address per group of 256, 31-byte chunks
 	if in.evm.ChainConfig().IsCancun(in.evm.Context.BlockNumber) && !contract.IsDeployment {
-		chunks, err = trie.ChunkifyCode(contract.Code)
-
 		totalEvals := len(contract.Code) / 31 / 256
 		if len(contract.Code)%(256*31) != 0 {
 			totalEvals += 1
@@ -206,10 +202,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			logged, pcCopy, gasCopy = false, pc, contract.Gas
 		}
 
-		if chunks != nil {
+		if len(contract.Chunks) != 0 {
 			// if the PC ends up in a new "chunk" of verkleized code, charge the
 			// associated costs.
-			contract.Gas -= touchChunkOnReadAndChargeGas(chunks, pc, chunkEvals, contract.Code, in.evm.TxContext.Accesses, contract.IsDeployment)
+			contract.Gas -= touchChunkOnReadAndChargeGas(contract.Chunks, pc, chunkEvals, contract.Code, in.evm.TxContext.Accesses, contract.IsDeployment)
 		}
 
 		// Get the operation from the jump table and validate the stack to ensure there are

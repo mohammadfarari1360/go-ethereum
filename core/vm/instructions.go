@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 	"github.com/holiman/uint256"
@@ -390,7 +389,7 @@ func touchEachChunksOnReadAndChargeGasWithAddress(offset, size uint64, address, 
 }
 
 // touchChunkOnReadAndChargeGas is a helper function to touch every chunk in a code range and charge witness gas costs
-func touchChunkOnReadAndChargeGas(chunks [][32]byte, offset uint64, evals [][]byte, code []byte, accesses *types.AccessWitness, deployment bool) uint64 {
+func touchChunkOnReadAndChargeGas(chunks trieUtils.ChunkedCode, offset uint64, evals [][]byte, code []byte, accesses *types.AccessWitness, deployment bool) uint64 {
 	// note that in the case where the executed code is outside the range of
 	// the contract code but touches the last leaf with contract code in it,
 	// we don't include the last leaf of code in the AccessWitness. The
@@ -420,7 +419,7 @@ func touchChunkOnReadAndChargeGas(chunks [][32]byte, offset uint64, evals [][]by
 		if deployment {
 			accesses.SetLeafValue(index[:], nil)
 		} else {
-			accesses.SetLeafValue(index[:], chunks[chunknr][:])
+			accesses.SetLeafValue(index[:], chunks[32*chunknr:(32*(chunknr+1))])
 		}
 	}
 
@@ -428,7 +427,7 @@ func touchChunkOnReadAndChargeGas(chunks [][32]byte, offset uint64, evals [][]by
 }
 
 // touchEachChunksOnReadAndChargeGas is a helper function to touch every chunk in a code range and charge witness gas costs
-func touchEachChunksOnReadAndChargeGas(offset, size uint64, addrPoint *verkle.Point, code []byte, accesses *types.AccessWitness, deployment bool) uint64 {
+func touchEachChunksOnReadAndChargeGas(offset, size uint64, addrPoint *verkle.Point, code []byte, chunks trieUtils.ChunkedCode, accesses *types.AccessWitness, deployment bool) uint64 {
 	// note that in the case where the copied code is outside the range of the
 	// contract code but touches the last leaf with contract code in it,
 	// we don't include the last leaf of code in the AccessWitness.  The
@@ -447,10 +446,6 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, addrPoint *verkle.Po
 	} else {
 		endOffset = offset + size
 	}
-	chunks, err := trie.ChunkifyCode(code)
-	if err != nil {
-		panic(err)
-	}
 
 	// endOffset - 1 since if the end offset is aligned on a chunk boundary,
 	// the last chunk should not be included.
@@ -467,7 +462,7 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, addrPoint *verkle.Po
 			if deployment {
 				accesses.SetLeafValue(index[:], nil)
 			} else {
-				accesses.SetLeafValue(index[:], chunks[i][:])
+				accesses.SetLeafValue(index[:], chunks[i*32:(i+1)*32])
 			}
 		}
 	}

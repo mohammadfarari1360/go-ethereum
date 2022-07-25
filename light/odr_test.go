@@ -87,7 +87,7 @@ func (odr *testOdr) Retrieve(ctx context.Context, req OdrRequest) error {
 		t.Prove(req.Key, 0, nodes)
 		req.Proof = nodes
 	case *CodeRequest:
-		req.Data = rawdb.ReadCode(odr.sdb, req.Hash)
+		req.Data, _ = rawdb.ReadCode(odr.sdb, req.Hash)
 	}
 	req.StoreResult(odr.ldb)
 	return nil

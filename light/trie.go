@@ -76,7 +76,7 @@ func (db *odrDatabase) ContractCode(addrHash, codeHash common.Hash) ([]byte, err
 	if codeHash == sha3Nil {
 		return nil, nil
 	}
-	code := rawdb.ReadCode(db.backend.Database(), codeHash)
+	code, _ := rawdb.ReadCode(db.backend.Database(), codeHash)
 	if len(code) != 0 {
 		return code, nil
 	}

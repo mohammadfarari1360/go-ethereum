@@ -337,6 +337,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		hashNumPairings stat
 		tries           stat
 		codes           stat
+		codechunks      stat
 		txLookups       stat
 		accountSnaps    stat
 		storageSnaps    stat
@@ -387,6 +388,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			tries.Add(size)
 		case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
 			codes.Add(size)
+		case bytes.HasPrefix(key, CodePrefix) && bytes.HasSuffix(key, CodeChunkingSuffix) && len(key) == len(CodePrefix)+common.HashLength+len(CodeChunkingSuffix):
+			codechunks.Add(size)
 		case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):
 			txLookups.Add(size)
 		case bytes.HasPrefix(key, SnapshotAccountPrefix) && len(key) == (len(SnapshotAccountPrefix)+common.HashLength):
@@ -463,6 +466,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Transaction index", txLookups.Size(), txLookups.Count()},
 		{"Key-Value store", "Bloombit index", bloomBits.Size(), bloomBits.Count()},
 		{"Key-Value store", "Contract codes", codes.Size(), codes.Count()},
+		{"Key-Value store", "Contract chunks", codechunks.Size(), codechunks.Count()},
 		{"Key-Value store", "Trie nodes", tries.Size(), tries.Count()},
 		{"Key-Value store", "Trie preimages", preimages.Size(), preimages.Count()},
 		{"Key-Value store", "Account snapshot", accountSnaps.Size(), accountSnaps.Count()},

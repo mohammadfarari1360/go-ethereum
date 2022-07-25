@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 	lru "github.com/hashicorp/golang-lru"
 )
@@ -50,7 +51,7 @@ type Database interface {
 	CopyTrie(Trie) Trie
 
 	// ContractCode retrieves a particular contract's code.
-	ContractCode(addrHash, codeHash common.Hash) ([]byte, error)
+	ContractCode(addrHash, codeHash common.Hash) ([]byte, []byte, error)
 
 	// ContractCodeSize retrieves a particular contracts code's size.
 	ContractCodeSize(addrHash, codeHash common.Hash) (int, error)
@@ -127,6 +128,7 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 			db:            trie.NewDatabaseWithConfig(db, config),
 			codeSizeCache: csc,
 			codeCache:     fastcache.New(codeCacheSize),
+			chunksCache:   fastcache.New(codeCacheSize),
 		}
 	}
 	return &cachingDB{
@@ -175,7 +177,7 @@ func (db *cachingDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, error
 	if code := db.codeCache.Get(nil, codeHash.Bytes()); len(code) > 0 {
 		return code, nil
 	}
-	code := rawdb.ReadCode(db.db.DiskDB(), codeHash)
+	code, _ := rawdb.ReadCode(db.db.DiskDB(), codeHash)
 	if len(code) > 0 {
 		db.codeCache.Set(codeHash.Bytes(), code)
 		db.codeSizeCache.Add(codeHash, len(code))
@@ -187,17 +189,17 @@ func (db *cachingDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, error
 // ContractCodeWithPrefix retrieves a particular contract's code. If the
 // code can't be found in the cache, then check the existence with **new**
 // db scheme.
-func (db *cachingDB) ContractCodeWithPrefix(addrHash, codeHash common.Hash) ([]byte, error) {
+func (db *cachingDB) ContractCodeWithPrefix(addrHash, codeHash common.Hash) ([]byte, []byte, error) {
 	if code := db.codeCache.Get(nil, codeHash.Bytes()); len(code) > 0 {
-		return code, nil
+		return code, nil, nil
 	}
-	code := rawdb.ReadCodeWithPrefix(db.db.DiskDB(), codeHash)
+	code, _ := rawdb.ReadCodeWithPrefix(db.db.DiskDB(), codeHash)
 	if len(code) > 0 {
 		db.codeCache.Set(codeHash.Bytes(), code)
 		db.codeSizeCache.Add(codeHash, len(code))
-		return code, nil
+		return code, nil, nil
 	}
-	return nil, errors.New("not found")
+	return nil, nil, errors.New("not found")
 }
 
 // ContractCodeSize retrieves a particular contracts code's size.
@@ -219,6 +221,7 @@ type VerkleDB struct {
 	db            *trie.Database
 	codeSizeCache *lru.Cache
 	codeCache     *fastcache.Cache
+	chunksCache   *fastcache.Cache
 }
 
 // OpenTrie opens the main account trie.
@@ -255,17 +258,19 @@ func (db *VerkleDB) CopyTrie(tr Trie) Trie {
 }
 
 // ContractCode retrieves a particular contract's code.
-func (db *VerkleDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, error) {
+func (db *VerkleDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, utils.ChunkedCode, error) {
 	if code := db.codeCache.Get(nil, codeHash.Bytes()); len(code) > 0 {
-		return code, nil
+		if chunks := db.codeCache.Get(nil, codeHash.Bytes()); len(chunks) > 0 {
+			return code, chunks, nil
+		}
 	}
-	code := rawdb.ReadCode(db.db.DiskDB(), codeHash)
+	code, chunks := rawdb.ReadCode(db.db.DiskDB(), codeHash)
 	if len(code) > 0 {
 		db.codeCache.Set(codeHash.Bytes(), code)
 		db.codeSizeCache.Add(codeHash, len(code))
-		return code, nil
+		return code, chunks, nil
 	}
-	return nil, errors.New("not found")
+	return nil, nil, errors.New("not found")
 }
 
 // ContractCodeSize retrieves a particular contracts code's size.
@@ -273,7 +278,7 @@ func (db *VerkleDB) ContractCodeSize(addrHash, codeHash common.Hash) (int, error
 	if code := db.codeCache.Get(nil, codeHash.Bytes()); len(code) > 0 {
 		return len(code), nil
 	}
-	code := rawdb.ReadCode(db.db.DiskDB(), codeHash)
+	code, _ := rawdb.ReadCode(db.db.DiskDB(), codeHash)
 	if len(code) > 0 {
 		db.codeCache.Set(codeHash.Bytes(), code)
 		db.codeSizeCache.Add(codeHash, len(code))

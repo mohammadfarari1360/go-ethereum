@@ -98,6 +98,7 @@ var (
 	SnapshotAccountPrefix = []byte("a") // SnapshotAccountPrefix + account hash -> account trie value
 	SnapshotStoragePrefix = []byte("o") // SnapshotStoragePrefix + account hash + storage hash -> storage trie value
 	CodePrefix            = []byte("c") // CodePrefix + code hash -> account code
+	CodeChunkingSuffix    = []byte("c") // CodePrefix + code hash + CodeChunkingSuffix -> chunked code
 	skeletonHeaderPrefix  = []byte("S") // skeletonHeaderPrefix + num (uint64 big endian) -> header
 
 	PreimagePrefix = []byte("secure-key-")       // PreimagePrefix + hash -> preimage
@@ -231,6 +232,11 @@ func preimageKey(hash common.Hash) []byte {
 // codeKey = CodePrefix + hash
 func codeKey(hash common.Hash) []byte {
 	return append(CodePrefix, hash.Bytes()...)
+}
+
+// CodePrefix + code hash + CodeChunkingSuffix -> chunked code
+func codeChunkKey(hash common.Hash) []byte {
+	return append(codeKey(hash), CodeChunkingSuffix...)
 }
 
 // IsCodeKey reports whether the given byte slice is the key of contract code,

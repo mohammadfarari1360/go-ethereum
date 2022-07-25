@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/trie/utils"
 )
 
 // ReadPreimage retrieves a single preimage of the provided hash.
@@ -29,23 +30,24 @@ func ReadPreimage(db ethdb.KeyValueReader, hash common.Hash) []byte {
 }
 
 // ReadCode retrieves the contract code of the provided code hash.
-func ReadCode(db ethdb.KeyValueReader, hash common.Hash) []byte {
+func ReadCode(db ethdb.KeyValueReader, hash common.Hash) ([]byte, []byte) {
 	// Try with the prefixed code scheme first, if not then try with legacy
 	// scheme.
-	data := ReadCodeWithPrefix(db, hash)
+	data, chunks := ReadCodeWithPrefix(db, hash)
 	if len(data) != 0 {
-		return data
+		return data, chunks
 	}
 	data, _ = db.Get(hash.Bytes())
-	return data
+	return data, nil
 }
 
 // ReadCodeWithPrefix retrieves the contract code of the provided code hash.
 // The main difference between this function and ReadCode is this function
 // will only check the existence with latest scheme(with prefix).
-func ReadCodeWithPrefix(db ethdb.KeyValueReader, hash common.Hash) []byte {
+func ReadCodeWithPrefix(db ethdb.KeyValueReader, hash common.Hash) ([]byte, []byte) {
 	data, _ := db.Get(codeKey(hash))
-	return data
+	chunks, _ := db.Get(codeChunkKey(hash))
+	return data, chunks
 }
 
 // ReadTrieNode retrieves the trie node of the provided hash.
@@ -91,10 +93,22 @@ func WritePreimages(db ethdb.KeyValueWriter, preimages map[common.Hash][]byte) {
 	preimageHitCounter.Inc(int64(len(preimages)))
 }
 
-// WriteCode writes the provided contract code database.
-func WriteCode(db ethdb.KeyValueWriter, hash common.Hash, code []byte) {
-	if err := db.Put(codeKey(hash), code); err != nil {
+// WriteCode writes the provided contract code to the database.
+func WriteCode(db ethdb.KeyValueWriter, hash common.Hash, code []byte, chunks []byte) {
+	var err error
+
+	if err = db.Put(codeKey(hash), code); err != nil {
 		log.Crit("Failed to store contract code", "err", err)
+	}
+
+	if len(chunks) == 0 {
+		chunks, err = utils.ChunkifyCode(code)
+		if err != nil {
+			log.Crit("Failed to chunk code")
+		}
+	}
+	if err = db.Put(codeChunkKey(hash), chunks); err != nil {
+		log.Crit("Failed to store contract code chunks", "err", err)
 	}
 }
 
