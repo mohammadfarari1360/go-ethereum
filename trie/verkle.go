@@ -294,7 +294,7 @@ func ChunkifyCode(code []byte) (ChunkedCode, error) {
 		chunkCount++
 	}
 	chunks := make([]byte, chunkCount*32)
-	for i := range chunks {
+	for i := 0; i < chunkCount; i++ {
 		// number of bytes to copy, 31 unless
 		// the end of the code has been reached.
 		end := 31 * (i + 1)
