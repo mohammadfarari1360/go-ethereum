@@ -176,6 +176,15 @@ type BlockHeadersPacket66 struct {
 	BlockHeadersPacket
 }
 
+// AuraBlockHeadersPacket represents a block header response.
+type AuraBlockHeadersPacket []*types.AuraHeader
+
+// AuraBlockHeadersPacket66 represents a block header response over eth/66.
+type AuraBlockHeadersPacket66 struct {
+	RequestId uint64
+	AuraBlockHeadersPacket
+}
+
 // BlockHeadersRLPPacket represents a block header response, to use when we already
 // have the headers rlp encoded.
 type BlockHeadersRLPPacket []rlp.RawValue
