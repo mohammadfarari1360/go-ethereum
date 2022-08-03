@@ -63,6 +63,8 @@ type Genesis struct {
 	GasUsed    uint64      `json:"gasUsed"`
 	ParentHash common.Hash `json:"parentHash"`
 	BaseFee    *big.Int    `json:"baseFeePerGas"`
+
+	Signature []byte `json:"omitempty"`
 }
 
 // GenesisAlloc specifies the initial state that is part of the genesis block.
@@ -374,6 +376,7 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 		MixDigest:  g.Mixhash,
 		Coinbase:   g.Coinbase,
 		Root:       root,
+		Signature:  g.Signature,
 	}
 	if g.GasLimit == 0 {
 		head.GasLimit = params.GenesisGasLimit
@@ -518,7 +521,8 @@ func DefaultGnosisGenesisBlock() *Genesis {
 		Nonce:      0,
 		GasLimit:   0x989680,
 		Difficulty: big.NewInt(0x20000),
-		Timestamp:  1538998020,
+		Timestamp:  0,
+		Signature:  make([]byte, 65),
 		Alloc: GenesisAlloc{
 			common.HexToAddress("0x0000000000000000000000000000000000000001"): GenesisAccount{
 				Balance: big.NewInt(1),

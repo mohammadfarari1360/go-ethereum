@@ -17,6 +17,7 @@
 package core
 
 import (
+	"bytes"
 	"math/big"
 	"reflect"
 	"testing"
@@ -241,5 +242,13 @@ func TestReadWriteGenesisAlloc(t *testing.T) {
 		if !reflect.DeepEqual(want, account) {
 			t.Fatal("Unexpected account")
 		}
+	}
+}
+
+func TestGnosisChainGenesisBlock(t *testing.T) {
+	genesis := DefaultGnosisGenesisBlock()
+	gh := genesis.ToBlock(nil).Hash()
+	if !bytes.Equal(gh[:], params.GnosisChainHash[:]) {
+		t.Fatalf("invalid gnosis chain genesis block %x", gh)
 	}
 }
