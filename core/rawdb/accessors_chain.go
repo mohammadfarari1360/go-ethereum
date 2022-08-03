@@ -382,8 +382,27 @@ func ReadHeader(db ethdb.Reader, hash common.Hash, number uint64) *types.Header 
 	}
 	header := new(types.Header)
 	if err := rlp.Decode(bytes.NewReader(data), header); err != nil {
-		log.Error("Invalid block header RLP", "hash", hash, "err", err)
-		return nil
+		auraheader := new(types.AuraHeader)
+		if err := rlp.Decode(bytes.NewReader(data), auraheader); err != nil {
+			log.Error("Invalid block header RLP", "hash", hash, "err", err)
+			return nil
+		}
+
+		header.ParentHash = auraheader.ParentHash
+		header.UncleHash = auraheader.UncleHash
+		header.Coinbase = auraheader.Coinbase
+		header.Root = auraheader.Root
+		header.TxHash = auraheader.TxHash
+		header.ReceiptHash = auraheader.ReceiptHash
+		header.Bloom = auraheader.Bloom
+		header.Difficulty = auraheader.Difficulty
+		header.Number = auraheader.Number
+		header.GasLimit = auraheader.GasLimit
+		header.GasUsed = auraheader.GasUsed
+		header.Time = auraheader.Time
+		header.Extra = auraheader.Extra
+		header.Signature = auraheader.Signature
+		header.BaseFee = auraheader.BaseFee
 	}
 	return header
 }
@@ -398,8 +417,35 @@ func WriteHeader(db ethdb.KeyValueWriter, header *types.Header) {
 	// Write the hash -> number mapping
 	WriteHeaderNumber(db, hash, number)
 
-	// Write the encoded header
-	data, err := rlp.EncodeToBytes(header)
+	var (
+		data []byte
+		err  error
+	)
+	if len(header.Signature) == 0 {
+		// Write the encoded header
+		data, err = rlp.EncodeToBytes(header)
+	} else {
+
+		auraheader := &types.AuraHeader{
+			header.ParentHash,
+			header.UncleHash,
+			header.Coinbase,
+			header.Root,
+			header.TxHash,
+			header.ReceiptHash,
+			header.Bloom,
+			header.Difficulty,
+			header.Number,
+			header.GasLimit,
+			header.GasUsed,
+			header.Time,
+			header.Extra,
+			[]byte{},
+			header.Signature,
+			nil,
+		}
+		data, err = rlp.EncodeToBytes(auraheader)
+	}
 	if err != nil {
 		log.Crit("Failed to RLP encode header", "err", err)
 	}
