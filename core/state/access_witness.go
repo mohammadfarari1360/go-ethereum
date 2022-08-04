@@ -53,9 +53,9 @@ type AccessWitness struct {
 	// block.
 	InitialValue map[string][]byte
 
-	// Caches all the points that correspond to an address,
-	// so they are not recalculated.
-	addrToPoint map[string]*verkle.Point
+	// Pointer to the StateDB, in which evaluated points
+	// are hashed.
+	statedb *StateDB
 }
 
 func NewAccessWitness() *AccessWitness {
@@ -63,7 +63,6 @@ func NewAccessWitness() *AccessWitness {
 		Branches:     make(map[VerkleStem]Mode),
 		Chunks:       make(map[common.Hash]Mode),
 		InitialValue: make(map[string][]byte),
-		addrToPoint:  make(map[string]*verkle.Point),
 	}
 }
 
@@ -201,12 +200,13 @@ func (aw *AccessWitness) Merge(other *AccessWitness) {
 		}
 	}
 
-	// TODO see if merging improves performance
-	//for k, v := range other.addrToPoint {
-	//if _, ok := aw.addrToPoint[k]; !ok {
-	//aw.addrToPoint[k] = v
-	//}
-	//}
+	// Do the merging, but it's probably pointless because
+	// the statedb will be the same when that happens.
+	for k, v := range other.statedb.addrToPoint {
+		if _, ok := aw.statedb.addrToPoint[k]; !ok {
+			aw.statedb.addrToPoint[k] = v
+		}
+	}
 }
 
 // Key returns, predictably, the list of keys that were touched during the
@@ -234,7 +234,6 @@ func (aw *AccessWitness) Copy() *AccessWitness {
 		Branches:     make(map[VerkleStem]Mode),
 		Chunks:       make(map[common.Hash]Mode),
 		InitialValue: make(map[string][]byte),
-		addrToPoint:  make(map[string]*verkle.Point),
 	}
 
 	naw.Merge(aw)
@@ -243,12 +242,12 @@ func (aw *AccessWitness) Copy() *AccessWitness {
 }
 
 func (aw *AccessWitness) getTreeKeyHeader(addr []byte) *verkle.Point {
-	if point, ok := aw.addrToPoint[string(addr)]; ok {
+	if point, ok := aw.statedb.addrToPoint[string(addr)]; ok {
 		return point
 	}
 
 	point := utils.EvaluateAddressPoint(addr)
-	aw.addrToPoint[string(addr)] = point
+	aw.statedb.addrToPoint[string(addr)] = point
 	return point
 }
 
