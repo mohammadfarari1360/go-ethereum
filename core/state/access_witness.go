@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package types
+package state
 
 import (
 	"encoding/binary"
@@ -303,7 +303,7 @@ func (aw *AccessWitness) SetLeafValuesMessageCall(addr, codeSize []byte) {
 		data  [32]byte
 	)
 	// Only evaluate the polynomial once
-	versionkey := utils.GetTreeKeyVersion(addr[:])
+	versionkey := aw.GetTreeKeyVersionCached(addr[:])
 	copy(cskey[:], versionkey)
 	cskey[31] = utils.CodeSizeLeafKey
 	aw.SetLeafValue(versionkey, data[:])

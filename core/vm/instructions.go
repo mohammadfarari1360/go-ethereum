@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -384,13 +385,13 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 	return nil, nil
 }
 
-func touchEachChunksOnReadAndChargeGasWithAddress(offset, size uint64, address, code []byte, accesses *types.AccessWitness, deployment bool) uint64 {
+func touchEachChunksOnReadAndChargeGasWithAddress(offset, size uint64, address, code []byte, accesses *state.AccessWitness, deployment bool) uint64 {
 	addrPoint := trieUtils.EvaluateAddressPoint(address)
 	return touchEachChunksOnReadAndChargeGas(offset, size, addrPoint, code, accesses, deployment)
 }
 
 // touchChunkOnReadAndChargeGas is a helper function to touch every chunk in a code range and charge witness gas costs
-func touchChunkOnReadAndChargeGas(chunks [][32]byte, offset uint64, evals [][]byte, code []byte, accesses *types.AccessWitness, deployment bool) uint64 {
+func touchChunkOnReadAndChargeGas(chunks [][32]byte, offset uint64, evals [][]byte, code []byte, accesses *state.AccessWitness, deployment bool) uint64 {
 	// note that in the case where the executed code is outside the range of
 	// the contract code but touches the last leaf with contract code in it,
 	// we don't include the last leaf of code in the AccessWitness. The
@@ -428,7 +429,7 @@ func touchChunkOnReadAndChargeGas(chunks [][32]byte, offset uint64, evals [][]by
 }
 
 // touchEachChunksOnReadAndChargeGas is a helper function to touch every chunk in a code range and charge witness gas costs
-func touchEachChunksOnReadAndChargeGas(offset, size uint64, addrPoint *verkle.Point, code []byte, accesses *types.AccessWitness, deployment bool) uint64 {
+func touchEachChunksOnReadAndChargeGas(offset, size uint64, addrPoint *verkle.Point, code []byte, accesses *state.AccessWitness, deployment bool) uint64 {
 	// note that in the case where the copied code is outside the range of the
 	// contract code but touches the last leaf with contract code in it,
 	// we don't include the last leaf of code in the AccessWitness.  The

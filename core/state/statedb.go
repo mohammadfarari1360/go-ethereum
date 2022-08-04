@@ -105,7 +105,7 @@ type StateDB struct {
 	// Per-transaction access list
 	accessList *accessList
 
-	witness *types.AccessWitness
+	witness *AccessWitness
 
 	// Journal of state modifications. This is the backbone of
 	// Snapshot and RevertToSnapshot.
@@ -166,14 +166,14 @@ func (s *StateDB) Snaps() *snapshot.Tree {
 	return s.snaps
 }
 
-func (s *StateDB) Witness() *types.AccessWitness {
+func (s *StateDB) Witness() *AccessWitness {
 	if s.witness == nil {
-		s.witness = types.NewAccessWitness()
+		s.witness = NewAccessWitness()
 	}
 	return s.witness
 }
 
-func (s *StateDB) SetWitness(aw *types.AccessWitness) {
+func (s *StateDB) SetWitness(aw *AccessWitness) {
 	s.witness = aw
 }
 
