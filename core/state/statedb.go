@@ -524,8 +524,8 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 
 			if obj.dirtyCode {
 				if chunks, err := trie.ChunkifyCode(obj.code); err == nil {
-					for i := range chunks {
-						s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i))), chunks[32*i:(i+1)*32])
+					for i := 0; i < len(chunks); i += 32 {
+						s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32)), chunks[i:i+32])
 					}
 				} else {
 					s.setError(err)
@@ -1020,8 +1020,8 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 			if obj.code != nil && obj.dirtyCode {
 				if s.trie.IsVerkle() {
 					if chunks, err := trie.ChunkifyCode(obj.code); err == nil {
-						for i := range chunks {
-							s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i))), chunks[i*32:32*(1+i)])
+						for i := 0; i < len(chunks); i += 32 {
+							s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32)), chunks[i:32+i])
 						}
 					} else {
 						s.setError(err)
