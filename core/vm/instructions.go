@@ -383,32 +383,22 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 		uint64CodeOffset = 0xffffffffffffffff
 	}
 
-	//paddedCodeCopy, copyOffset, nonPaddedCopyLength := getDataAndAdjustedBounds(scope.Contract.Code, uint64CodeOffset, length.Uint64())
-	//if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
-	//touchEachChunksOnReadAndChargeGas(copyOffset, nonPaddedCopyLength, scope.Contract.AddressPoint(), scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment)
-	//}
-
 	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
 		chunkedOffset := uint64CodeOffset + 1 + uint64CodeOffset/31 // codeOffset translated into the chunked space
-		touchEachChunksOnReadAndChargeGas(chunkedOffset, 1, scope.Contract.AddressPoint(), scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment)
-
-		// Copy the part of the code in the first chunk
-		copied = 31 - uint64CodeOffset%31
-		scope.Memory.Set(memOffset.Uint64(), copied, scope.Contract.Code[chunkedOffset:])
+		chunkedEnd := uint64EndOffset + 1 + uint64EndOffset/31      // endOffset translated into the chunked space
+		touchEachChunksOnReadAndChargeGas(chunkedOffset, chunkedEnd-chunkedOffset, scope.Contract.AddressPoint(), scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment)
 
 		// Copy all full chunks in the middle
-		it := chunks.Iter(1+uint64CodeOffset/31, uint64EndOffset/31)
+		it := chunks.Iter(uint64CodeOffset/31, uint64EndOffset/31)
 		for {
 			chunk, err := it()
 			if err != nil {
 				break // the only possible error is when the iterator has reached the end
 			}
-			scope.Memory.Set(memOffset.Uint64()+copied, 31, chunk[1:])
-			copied += 31
+			start := (uint64CodeOffset + copied) % 31
+			scope.Memory.Set(memOffset.Uint64()+copied, 31, chunk[1+start:])
+			copied += uint64(len(chunk)) - start - 1
 		}
-
-		// Copy the part of the code in the last chunk
-		scope.Memory.Set(memOffset.Uint64()+copied, copied%31, scope.Contract.Code[chunkedOffset+copied%31+copied/31:])
 	} else {
 		codeCopy := getData(scope.Contract.Code, uint64CodeOffset, length.Uint64())
 		scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
