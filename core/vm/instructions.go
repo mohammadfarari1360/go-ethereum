@@ -380,8 +380,9 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 	}
 	uint64EndOffset, overflow := endOffset.Uint64WithOverflow()
 	if overflow {
-		uint64CodeOffset = 0xffffffffffffffff
+		uint64EndOffset = 0xffffffffffffffff
 	}
+	uint64Length := uint64EndOffset - uint64CodeOffset
 
 	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
 		chunkedOffset := uint64CodeOffset + 1 + uint64CodeOffset/31 // codeOffset translated into the chunked space
@@ -398,6 +399,12 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 			start := (uint64CodeOffset + copied) % 31
 			scope.Memory.Set(memOffset.Uint64()+copied, 31, chunk[1+start:])
 			copied += uint64(len(chunk)) - start - 1
+		}
+
+		// Being chunked, the code will be padded to the next 31-byte boundary.
+		if copied < uint64Length {
+			chunk := chunks.GetChunk(uint64EndOffset / 31)
+			scope.Memory.Set(memOffset.Uint64()+copied, uint64EndOffset%31, chunk[1:1+uint64EndOffset%31])
 		}
 	} else {
 		codeCopy := getData(scope.Contract.Code, uint64CodeOffset, length.Uint64())
@@ -501,17 +508,43 @@ func opExtCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 		memOffset  = stack.pop()
 		codeOffset = stack.pop()
 		length     = stack.pop()
+		copied     = uint64(0)
 	)
 	uint64CodeOffset, overflow := codeOffset.Uint64WithOverflow()
 	if overflow {
 		uint64CodeOffset = 0xffffffffffffffff
 	}
+	uint64EndOffset, overflow := length.Uint64WithOverflow()
+	if overflow {
+		uint64EndOffset = 0xffffffffffffffff
+	}
+	uint64Length := uint64EndOffset - uint64CodeOffset
+
 	addr := common.Address(a.Bytes20())
 	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
-		code := interpreter.evm.StateDB.GetCode(addr)
-		paddedCodeCopy, copyOffset, nonPaddedCopyLength := getDataAndAdjustedBounds(code, uint64CodeOffset, length.Uint64())
-		touchEachChunksOnReadAndChargeGasWithAddress(copyOffset, nonPaddedCopyLength, addr[:], code, interpreter.evm.Accesses, false)
-		scope.Memory.Set(memOffset.Uint64(), length.Uint64(), paddedCodeCopy)
+		chunks := trie.ChunkedCode(interpreter.evm.StateDB.GetCode(addr))
+
+		chunkedOffset := uint64CodeOffset + 1 + uint64CodeOffset/31 // codeOffset translated into the chunked space
+		chunkedEnd := uint64EndOffset + 1 + uint64EndOffset/31      // endOffset translated into the chunked space
+		touchEachChunksOnReadAndChargeGas(chunkedOffset, chunkedEnd-chunkedOffset, scope.Contract.AddressPoint(), scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment)
+
+		// Copy all full chunks in the middle
+		it := chunks.Iter(uint64CodeOffset/31, uint64EndOffset/31)
+		for {
+			chunk, err := it()
+			if err != nil {
+				break // the only possible error is when the iterator has reached the end
+			}
+			start := (uint64CodeOffset + copied) % 31
+			scope.Memory.Set(memOffset.Uint64()+copied, 31, chunk[1+start:])
+			copied += uint64(len(chunk)) - start - 1
+		}
+
+		// Being chunked, the code will be padded to the next 31-byte boundary.
+		if copied < uint64Length {
+			chunk := chunks.GetChunk(uint64EndOffset / 31)
+			scope.Memory.Set(memOffset.Uint64()+copied, uint64EndOffset%31, chunk[1:1+uint64EndOffset%31])
+		}
 	} else {
 		codeCopy := getData(interpreter.evm.StateDB.GetCode(addr), uint64CodeOffset, length.Uint64())
 		scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)

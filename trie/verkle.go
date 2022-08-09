@@ -293,7 +293,8 @@ func (cc ChunkedCode) Iter(start, end uint64) func() ([]byte, error) {
 // GetChunk gets the chunk number `number`.
 func (cc ChunkedCode) GetChunk(number uint64) []byte {
 	if number*32 > uint64(len(cc)) {
-		return nil
+		var padding [32]byte
+		return padding[:]
 	}
 
 	return cc[32*number : 32*(number+1)]
