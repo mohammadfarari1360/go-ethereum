@@ -122,7 +122,7 @@ func gasCodeCopy(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memory
 			uint64Length = 0xffffffffffffffff
 		}
 		_, offset, nonPaddedSize := getDataAndAdjustedBounds(contract.Code, uint64CodeOffset, uint64Length)
-		statelessGas = touchEachChunksOnReadAndChargeGas(offset, nonPaddedSize, contract.AddressPoint(), nil, evm.Accesses, contract.IsDeployment)
+		statelessGas = touchEachChunksOnReadAndChargeGas(offset, nonPaddedSize, contract, nil, evm.Accesses, contract.IsDeployment)
 	}
 	usedGas, err := gasCodeCopyStateful(evm, contract, stack, mem, memorySize)
 	return usedGas + statelessGas, err
@@ -134,7 +134,6 @@ func gasExtCodeCopy(evm *EVM, contract *Contract, stack *Stack, mem *Memory, mem
 		var (
 			codeOffset = stack.Back(2)
 			length     = stack.Back(3)
-			targetAddr = stack.Back(0).Bytes20()
 		)
 		uint64CodeOffset, overflow := codeOffset.Uint64WithOverflow()
 		if overflow {
@@ -144,13 +143,14 @@ func gasExtCodeCopy(evm *EVM, contract *Contract, stack *Stack, mem *Memory, mem
 		if overflow {
 			uint64Length = 0xffffffffffffffff
 		}
+		othercontract := &Contract{}
 		// note:  we must charge witness costs for the specified range regardless of whether it
 		// is in-bounds of the actual target account code.  This is because we must charge the cost
 		// before hitting the db to be able to now what the actual code size is.  This is different
 		// behavior from CODECOPY which only charges witness access costs for the part of the range
 		// which overlaps in the account code.  TODO: clarify this is desired behavior and amend the
 		// spec.
-		statelessGas = touchEachChunksOnReadAndChargeGasWithAddress(uint64CodeOffset, uint64Length, targetAddr[:], nil, evm.Accesses, contract.IsDeployment)
+		statelessGas = touchEachChunksOnReadAndChargeGasWithAddress(uint64CodeOffset, uint64Length, othercontract, nil, evm.Accesses, contract.IsDeployment)
 	}
 	usedGas, err := gasExtCodeCopyStateful(evm, contract, stack, mem, memorySize)
 	return usedGas + statelessGas, err
