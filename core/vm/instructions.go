@@ -377,7 +377,7 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 	paddedCodeCopy, copyOffset, nonPaddedCopyLength := getDataAndAdjustedBounds(scope.Contract.Code, uint64CodeOffset, length.Uint64())
 	if interpreter.evm.chainConfig.IsCancun(interpreter.evm.Context.BlockNumber) {
-		touchEachChunksOnReadAndChargeGas(copyOffset, nonPaddedCopyLength, scope.Contract, scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment)
+		scope.Contract.UseGas(touchEachChunksOnReadAndChargeGas(copyOffset, nonPaddedCopyLength, scope.Contract, scope.Contract.Code, interpreter.evm.Accesses, scope.Contract.IsDeployment))
 	}
 	scope.Memory.Set(memOffset.Uint64(), uint64(len(paddedCodeCopy)), paddedCodeCopy)
 	return nil, nil
