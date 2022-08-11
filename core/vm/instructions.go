@@ -492,6 +492,7 @@ func opExtCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 		contract := &Contract{
 			Code:   code,
 			Chunks: trie.ChunkifyCode(code),
+			self:   AccountRef(addr),
 		}
 		paddedCodeCopy, copyOffset, nonPaddedCopyLength := getDataAndAdjustedBounds(code, uint64CodeOffset, length.Uint64())
 		touchEachChunksOnReadAndChargeGasWithAddress(copyOffset, nonPaddedCopyLength, contract, code, interpreter.evm.Accesses, false)

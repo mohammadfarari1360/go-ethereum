@@ -440,7 +440,7 @@ func TestProcessVerkle(t *testing.T) {
 			t.Fatalf("expected block %d to be present in chain", i+1)
 		}
 		if b.GasUsed() != blockGasUsagesExpected[i] {
-			t.Fatalf("expected block txs to use %d, got %d\n", blockGasUsagesExpected[i], b.GasUsed())
+			t.Fatalf("expected block txs to use %d, got %d in block %d\n", blockGasUsagesExpected[i], b.GasUsed(), i)
 		}
 	}
 }
