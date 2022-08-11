@@ -65,10 +65,11 @@ type AccessWitness struct {
 
 func NewAccessWitness() *AccessWitness {
 	return &AccessWitness{
-		Branches:     make(map[VerkleStem]Mode),
-		Chunks:       make(map[common.Hash]Mode),
-		InitialValue: make(map[string][]byte),
-		addrToPoint:  make(map[string]*verkle.Point),
+		Branches:      make(map[VerkleStem]Mode),
+		Chunks:        make(map[common.Hash]Mode),
+		InitialValue:  make(map[string][]byte),
+		addrToPoint:   make(map[string]*verkle.Point),
+		CodeLocations: make(map[string]map[uint64]struct{}),
 	}
 }
 
