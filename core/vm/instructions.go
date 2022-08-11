@@ -461,7 +461,7 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, contract *Contract, 
 
 			if len(code) > 0 {
 				if deployment {
-					accesses.SetLeafValue(index[:], contract.Chunks[32*i:(i+1)*32])
+					accesses.SetLeafValue(index[:], nil)
 				} else {
 					accesses.SetLeafValue(index[:], contract.Chunks[32*i:(i+1)*32])
 				}
