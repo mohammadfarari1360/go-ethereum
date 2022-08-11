@@ -449,20 +449,25 @@ func touchEachChunksOnReadAndChargeGas(offset, size uint64, contract *Contract, 
 	// endOffset - 1 since if the end offset is aligned on a chunk boundary,
 	// the last chunk should not be included.
 	for i := offset / 31; i <= (endOffset-1)/31; i++ {
-		index := trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(contract.AddressPoint(), uint256.NewInt(i))
+		// only charge for+cache the chunk if it isn't already present
+		if !accesses.HasCodeChunk(contract.Address().Bytes(), i) {
+			index := trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(contract.AddressPoint(), uint256.NewInt(i))
 
-		var overflow bool
-		statelessGasCharged, overflow = math.SafeAdd(statelessGasCharged, accesses.TouchAddressOnReadAndComputeGas(index))
-		if overflow {
-			panic("overflow when adding gas")
-		}
-
-		if len(code) > 0 {
-			if deployment {
-				accesses.SetLeafValue(index[:], nil)
-			} else {
-				accesses.SetLeafValue(index[:], contract.Chunks[32*i:(i+1)*32])
+			var overflow bool
+			statelessGasCharged, overflow = math.SafeAdd(statelessGasCharged, accesses.TouchAddressOnReadAndComputeGas(index))
+			if overflow {
+				panic("overflow when adding gas")
 			}
+
+			if len(code) > 0 {
+				if deployment {
+					accesses.SetLeafValue(index[:], nil)
+				} else {
+					accesses.SetLeafValue(index[:], contract.Chunks[32*i:(i+1)*32])
+				}
+			}
+
+			accesses.SetCachedCodeChunk(contract.Address().Bytes(), i)
 		}
 	}
 
