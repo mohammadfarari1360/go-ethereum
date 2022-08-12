@@ -205,10 +205,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			logged, pcCopy, gasCopy = false, pc, contract.Gas
 		}
 
-		if contract.Chunks != nil {
+		if contract.Chunks != nil && !in.evm.StateDB.Witness().HasCodeChunk(contract.Address().Bytes(), pc/31) {
 			// if the PC ends up in a new "chunk" of verkleized code, charge the
 			// associated costs.
 			contract.Gas -= touchChunkOnReadAndChargeGas(contract.Chunks, pc, chunkEvals, contract.Code, in.evm.TxContext.Accesses, contract.IsDeployment)
+			in.evm.StateDB.Witness().SetCachedCodeChunk(contract.Address().Bytes(), pc/31)
 		}
 
 		// Get the operation from the jump table and validate the stack to ensure there are
