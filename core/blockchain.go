@@ -1602,7 +1602,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
+		proot := parent.Root
+		// perform the verkle fork if this is the fork block
+		if block.NumberU64() == 230081 {
+			proot = common.HexToHash("0x59bfbc45fd2399657e350807e4768812f78dc7e3e93063fe3fe02c6f588655b9")
+			bc.SetVerkleFork(proot)
+		}
+		statedb, err := state.New(proot, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
 		}

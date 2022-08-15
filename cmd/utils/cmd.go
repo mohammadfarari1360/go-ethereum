@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"os/signal"
 	"runtime"
@@ -136,6 +137,9 @@ func monitorFreeDiskSpace(sigc chan os.Signal, path string, freeDiskSpaceCritica
 }
 
 func ImportChain(chain *core.BlockChain, fn string) error {
+	chain.Config().CancunBlock = big.NewInt(0).Add(chain.CurrentHeader().Number, big.NewInt(1))
+	fmt.Println("cancun block is", chain.Config().CancunBlock)
+
 	// Watch for Ctrl-C while the import is running.
 	// If a signal is received, the import will stop at the next batch.
 	interrupt := make(chan os.Signal, 1)

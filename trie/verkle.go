@@ -21,6 +21,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -60,6 +61,53 @@ func (trie *VerkleTrie) GetKey(key []byte) []byte {
 // trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryGet(key []byte) ([]byte, error) {
 	return trie.root.Get(key, trie.db.DiskDB().Get)
+}
+
+func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
+	var (
+		err                                error
+		balancekey, cskey, ckkey, noncekey [32]byte
+		acc                                *types.StateAccount = &types.StateAccount{}
+	)
+
+	// Only evaluate the polynomial once
+	versionkey := utils.GetTreeKeyVersion(key[:])
+	copy(balancekey[:], versionkey)
+	balancekey[31] = utils.BalanceLeafKey
+	copy(noncekey[:], versionkey)
+	noncekey[31] = utils.NonceLeafKey
+	copy(cskey[:], versionkey)
+	cskey[31] = utils.CodeSizeLeafKey
+	copy(ckkey[:], versionkey)
+	ckkey[31] = utils.CodeKeccakLeafKey
+
+	nonce, err := t.TryGet(noncekey[:])
+	if err != nil {
+		return nil, fmt.Errorf("TryGetAccount (%x) error: %v", key, err)
+	}
+	if len(nonce) > 0 {
+		acc.Nonce = binary.LittleEndian.Uint64(nonce)
+	}
+	balance, err := t.TryGet(balancekey[:])
+	if err != nil {
+		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+	}
+	if len(balance) > 0 {
+		for i := range balance {
+			balance[len(balance)-i-1], balance[i] = balance[i], balance[len(balance)-i-1]
+		}
+	}
+	acc.Balance = new(big.Int).SetBytes(balance[:])
+	ck, err := t.TryGet(ckkey[:])
+	if err != nil {
+		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+
+	}
+	acc.CodeHash = ck
+
+	// TODO regarder comment setter le code size aussi
+
+	return acc, nil
 }
 
 func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
