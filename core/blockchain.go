@@ -595,7 +595,11 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 							// if the historical chain pruning is enabled. In that case the logic
 							// needs to be improved here.
 							if !bc.HasState(bc.genesisBlock.Root()) {
-								if err := CommitGenesisState(bc.db, bc.genesisBlock.Hash()); err != nil {
+								state, err := bc.State()
+								if err != nil {
+									log.Crit("Failed to get state database in reorg through genesis", "err", err)
+								}
+								if err = CommitGenesisState(bc.db, bc.genesisBlock.Hash(), state.Preimages() != nil); err != nil {
 									log.Crit("Failed to commit genesis state", "err", err)
 								}
 								log.Debug("Recommitted genesis state to disk")

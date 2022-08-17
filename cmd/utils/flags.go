@@ -1955,6 +1955,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
 		}
 	}
+
+	if cfg.Genesis != nil {
+		cfg.Genesis.UsePreimages = ctx.IsSet(CachePreimagesFlag.Name)
+	}
 }
 
 // SetDNSDiscoveryDefaults configures DNS discovery with the given URL if
@@ -2138,6 +2142,7 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	case ctx.Bool(DeveloperFlag.Name):
 		Fatalf("Developer chains are ephemeral")
 	}
+	genesis.UsePreimages = ctx.Bool(CachePreimagesFlag.Name)
 	return genesis
 }
 
@@ -2145,7 +2150,7 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chainDb ethdb.Database) {
 	var err error
 	chainDb = MakeChainDatabase(ctx, stack, false) // TODO(rjl493456442) support read-only database
-	config, _, err := core.SetupGenesisBlock(chainDb, MakeGenesis(ctx))
+	config, _, err := core.SetupGenesisBlock(chainDb, MakeGenesis(ctx), ctx.Bool(CachePreimagesFlag.Name))
 	if err != nil {
 		Fatalf("%v", err)
 	}
