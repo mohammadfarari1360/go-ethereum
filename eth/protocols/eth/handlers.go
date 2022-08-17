@@ -377,6 +377,7 @@ func handleBlockHeaders66(backend Backend, msg Decoder, peer *Peer) error {
 			Time:        resaura.AuraBlockHeadersPacket[i].Time,
 			Extra:       resaura.AuraBlockHeadersPacket[i].Extra,
 			Signature:   resaura.AuraBlockHeadersPacket[i].Signature,
+			Step:        resaura.AuraBlockHeadersPacket[i].Step,
 			BaseFee:     resaura.AuraBlockHeadersPacket[i].BaseFee,
 		}
 	}
@@ -385,6 +386,8 @@ func handleBlockHeaders66(backend Backend, msg Decoder, peer *Peer) error {
 		hashes := make([]common.Hash, len(res.BlockHeadersPacket))
 		for i, header := range res.BlockHeadersPacket {
 			hashes[i] = header.Hash()
+		// for i := range res.BlockHeadersPacket {
+		// 	hashes[i] = resaura.AuraBlockHeadersPacket[i].Hash()
 		}
 		return hashes
 	}

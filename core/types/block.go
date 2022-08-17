@@ -93,6 +93,32 @@ type AuraHeader struct {
 	*/
 }
 
+// XXX pas la peine de faire le hack
+func (h *AuraHeader) Hash() common.Hash {
+	if len(h.Signature) > 0 {
+		return rlpHash(&AuraHeader{
+			h.ParentHash,
+			h.UncleHash,
+			h.Coinbase,
+			h.Root,
+			h.TxHash,
+			h.ReceiptHash,
+			h.Bloom,
+			h.Difficulty,
+			h.Number,
+			h.GasLimit,
+			h.GasUsed,
+			h.Time,
+			h.Extra,
+			h.Step,
+			h.Signature,
+			nil,
+		})
+	}
+
+	return rlpHash(h)
+}
+
 // Header represents a block header in the Ethereum blockchain.
 type Header struct {
 	ParentHash  common.Hash    `json:"parentHash"       gencodec:"required"`
@@ -108,6 +134,7 @@ type Header struct {
 	GasUsed     uint64         `json:"gasUsed"          gencodec:"required"`
 	Time        uint64         `json:"timestamp"        gencodec:"required"`
 	Extra       []byte         `json:"extraData"        gencodec:"required"`
+	Step        []byte         `json:"step,omitempty" rlp:"-"`
 	Signature   []byte         `json:"signature" rlp:"optional"`
 	MixDigest   common.Hash    `json:"mixHash" rlp:"optional"`
 	Nonce       BlockNonce     `json:"nonce" rlp:"optional"`
@@ -152,7 +179,7 @@ func (h *Header) Hash() common.Hash {
 			h.GasUsed,
 			h.Time,
 			h.Extra,
-			[]byte{},
+			h.Step,
 			h.Signature,
 			nil,
 		})

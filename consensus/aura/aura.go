@@ -93,7 +93,7 @@ var (
 
 	// errInvalidValidatorSeal is returned if the extra data field length is not
 	// equal to the length of a seal
-	errInvalidExtraData = errors.New("extra data field in block header is invalid")
+	errInvalidSignatureLength = errors.New("missing or truncated signature")
 
 	// errInvalidCheckpointSigners is returned if a checkpoint block contains an
 	// invalid list of signers (i.e. non divisible by 20 bytes, or not the correct
@@ -282,14 +282,13 @@ func (a *Aura) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	//}
 
 	// Ensure that the extra-data contains a single signature
-	signersBytes := len(header.Extra) - extraSeal
-	if signersBytes != 0 {
-		return errInvalidExtraData
+	if len(header.Signature) != 65 {
+		return errInvalidSignatureLength
 	}
 	// Ensure that the mix digest is zero as we don't have fork protection currently
-	if header.MixDigest != (common.Hash{}) {
-		return errInvalidMixDigest
-	}
+	// if header.MixDigest != (common.Hash{}) {
+	// 	return errInvalidMixDigest
+	// }
 	// Ensure that the block doesn't contain any uncles which are meaningless in PoA
 	if header.UncleHash != uncleHash {
 		return errInvalidUncleHash
