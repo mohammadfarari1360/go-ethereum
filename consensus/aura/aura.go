@@ -170,13 +170,12 @@ func ecrecover(header *types.Header, sigcache *lru.ARCCache) (common.Address, er
 		return address.(common.Address), nil
 	}
 	// Retrieve the signature from the header extra-data
-	if len(header.Extra) < extraSeal {
+	if len(header.Signature) < extraSeal {
 		return common.Address{}, errMissingSignature
 	}
-	signature := header.Extra[len(header.Extra)-extraSeal:]
 
 	// Recover the public key and the Ethereum address
-	pubkey, err := crypto.Ecrecover(sigHash(header).Bytes(), signature)
+	pubkey, err := crypto.Ecrecover(sigHash(header).Bytes(), header.Signature)
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -295,9 +294,9 @@ func (a *Aura) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	}
 	// Ensure that the block's difficulty is correct (it should be constant)
 	if number > 0 {
-		if header.Difficulty != chain.Config().Aura.Difficulty {
-			return errInvalidDifficulty
-		}
+		// if header.Difficulty != chain.Config().Aura.Difficulty {
+		// 	return errInvalidDifficulty
+		// }
 	}
 	// If all checks passed, validate any special fields for hard forks
 	if err := misc.VerifyForkHashes(chain.Config(), header, false); err != nil {
