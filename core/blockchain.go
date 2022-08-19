@@ -1404,6 +1404,14 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	return bc.insertChain(chain, true, true)
 }
 
+func (bc *BlockChain) SetVerkleFork(originalRoot, translatedRoot common.Hash) {
+	bc.stateCache.(*state.ForkingDB).Fork(originalRoot, translatedRoot)
+}
+
+func (bc *BlockChain) AddRootTranslation(originalRoot, translatedRoot common.Hash) {
+	bc.stateCache.(*state.ForkingDB).AddTranslation(originalRoot, translatedRoot)
+}
+
 // insertChain is the internal implementation of InsertChain, which assumes that
 // 1) chains are contiguous, and 2) The chain mutex is held.
 //
@@ -1602,13 +1610,12 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-		proot := parent.Root
 		// perform the verkle fork if this is the fork block
 		if block.NumberU64() == 230081 {
-			proot = common.HexToHash("0x59bfbc45fd2399657e350807e4768812f78dc7e3e93063fe3fe02c6f588655b9")
-			bc.SetVerkleFork(proot)
+			proot := common.HexToHash("0x6c5728f0e46023ac6253b7bf5ef3cf2469435b5a46cf05055eaf4f591c62c220")
+			bc.SetVerkleFork(parent.Root, proot)
 		}
-		statedb, err := state.New(proot, bc.stateCache, bc.snaps)
+		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
 		}
@@ -1643,6 +1650,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			atomic.StoreUint32(&followupInterrupt, 1)
 			return it.index, err
 		}
+		bc.AddRootTranslation(block.Root(), statedb.IntermediateRoot(false))
 
 		// Update the metrics touched during block processing
 		accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete, we can mark them

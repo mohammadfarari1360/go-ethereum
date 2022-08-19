@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 )
@@ -148,6 +149,19 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
 	}
 	// TODO figure out if the code size needs to be updated, too
+
+	// XXX hack to flush to the db until the snapshot is available
+	t.root.(*verkle.InternalNode).Flush(func(node verkle.VerkleNode) {
+		comm := node.ComputeCommitment()
+		s, err := node.Serialize()
+		if err != nil {
+			panic(err)
+		}
+		commB := comm.Bytes()
+		if err := t.db.DiskDB().Put(commB[:], s); err != nil {
+			log.Error("error writing trie data into db", "err", err)
+		}
+	})
 
 	return nil
 }

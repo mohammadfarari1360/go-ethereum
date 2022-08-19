@@ -143,8 +143,8 @@ type ForkingDB struct {
 	*cachingDB
 	*VerkleDB
 
-	forked         bool
-	translatedRoot common.Hash // hash of the translated root, for opening
+	forked          bool
+	translatedRoots map[common.Hash]common.Hash // hash of the translated root, for opening
 }
 
 // ContractCode implements Database
@@ -177,7 +177,7 @@ func (fdb *ForkingDB) CopyTrie(t Trie) Trie {
 // OpenStorageTrie implements Database
 func (fdb *ForkingDB) OpenStorageTrie(addrHash common.Hash, root common.Hash) (Trie, error) {
 	if fdb.forked {
-		return fdb.VerkleDB.OpenStorageTrie(addrHash, root)
+		return fdb.VerkleDB.OpenStorageTrie(addrHash, fdb.translatedRoots[root])
 	}
 
 	return fdb.cachingDB.OpenStorageTrie(addrHash, root)
@@ -187,7 +187,7 @@ func (fdb *ForkingDB) OpenStorageTrie(addrHash common.Hash, root common.Hash) (T
 func (fdb *ForkingDB) OpenTrie(root common.Hash) (Trie, error) {
 	if fdb.forked {
 		// il y a un probleme: ça ne marche que pour le premier block
-		return fdb.VerkleDB.OpenTrie(fdb.translatedRoot)
+		return fdb.VerkleDB.OpenTrie(fdb.translatedRoots[root])
 	}
 
 	return fdb.cachingDB.OpenTrie(root)
@@ -203,9 +203,13 @@ func (fdb *ForkingDB) TrieDB() *trie.Database {
 }
 
 // Fork implements the fork
-func (fdb *ForkingDB) Fork(translatedRoot common.Hash) {
+func (fdb *ForkingDB) Fork(originalRoot, translatedRoot common.Hash) {
 	fdb.forked = true
-	fdb.translatedRoot = translatedRoot
+	fdb.translatedRoots = map[common.Hash]common.Hash{originalRoot: translatedRoot}
+}
+
+func (fdb *ForkingDB) AddTranslation(orig, trans common.Hash) {
+	fdb.translatedRoots[orig] = trans
 }
 
 type cachingDB struct {
