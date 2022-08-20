@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie/utils"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 	"github.com/holiman/uint256"
@@ -247,13 +248,18 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			s.db.SnapshotStorageReads += time.Since(start)
 		}
 	}
+	var value common.Hash
 	// If the snapshot is unavailable or reading from it fails, load from the database.
 	if s.db.snap == nil || err != nil {
-		if s.db.GetTrie().IsVerkle() {
-			panic("verkle trees use the snapshot")
-		}
 		start := time.Now()
-		enc, err = s.getTrie(db).TryGet(key.Bytes())
+		if s.db.GetTrie().IsVerkle() {
+			var content []byte
+			slot := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(s.pointEval, new(uint256.Int).SetBytes(key.Bytes()))
+			content, err = s.db.trie.TryGet(slot)
+			value.SetBytes(content)
+		} else {
+			enc, err = s.getTrie(db).TryGet(key.Bytes())
+		}
 		if metrics.EnabledExpensive {
 			s.db.StorageReads += time.Since(start)
 		}
@@ -262,7 +268,6 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			return common.Hash{}
 		}
 	}
-	var value common.Hash
 	if len(enc) > 0 {
 		_, content, _, err := rlp.Split(enc)
 		if err != nil {
