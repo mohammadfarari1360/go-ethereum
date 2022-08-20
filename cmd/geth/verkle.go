@@ -282,6 +282,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 			// Write the code size in the account header group
 			var size [32]byte
+			newValues[3] = acc.CodeHash[:]
 			newValues[4] = size[:]
 			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
 		}
