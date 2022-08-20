@@ -19,8 +19,10 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -56,7 +58,7 @@ var (
 					utils.VerkleConversionInsertRangeSizeFlag,
 				}, utils.NetworkFlags, utils.DatabasePathFlags),
 				Description: `
-geth snapshot to-verkle <state-root>
+geth verkle to-verkle <state-root>
 This command takes a snapshot and inserts its values in a fresh verkle tree.
 
 The argument is interpreted as the root hash. If none is provided, the latest
@@ -73,11 +75,23 @@ block is used.
 					utils.VerkleConversionInsertRangeSizeFlag,
 				}, utils.NetworkFlags, utils.DatabasePathFlags),
 				Description: `
-geth snapshot to-verkle <state-root>
-This command takes a snapshot and inserts its values in a fresh verkle tree.
-
-The argument is interpreted as the root hash. If none is provided, the latest
-block is used.
+geth verkle verify-verkle <state-root>
+This command takes a root commitment and attempts to rebuild the tree.
+ `,
+			},
+			{
+				Name:      "dump",
+				Usage:     "Dump a verkle tree to a DOT file",
+				ArgsUsage: "<root> <key1> [<key 2> ...]",
+				Action:    expandVerkle,
+				Flags: flags.Merge([]cli.Flag{
+					utils.VerkleConversionInsertRangeStartFlag,
+					utils.VerkleConversionInsertRangeSizeFlag,
+				}, utils.NetworkFlags, utils.DatabasePathFlags),
+				Description: `
+geth verkle dump <state-root> <key 1> [<key 2> ...]
+This command will produce a dot file representing the tree, rooted at <root>.
+in which key1, key2, ... are expanded.
  `,
 			},
 		},
@@ -462,5 +476,57 @@ func verifyVerkle(ctx *cli.Context) error {
 	}
 
 	log.Info("Tree was rebuilt from the database")
+	return nil
+}
+
+func expandVerkle(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
+	var (
+		rootC   common.Hash
+		keylist [][]byte
+		err     error
+	)
+	if ctx.NArg() > 1 {
+		rootC, err = parseRoot(ctx.Args().First())
+		if err != nil {
+			log.Error("Failed to resolve state root", "error", err)
+			return err
+		}
+		keylist = make([][]byte, 0, ctx.Args().Len()-1)
+		args := ctx.Args().Slice()
+		for i := range args[1:] {
+			key, err := hex.DecodeString(args[i+1])
+			log.Info("decoded key", "arg", args[i+1], "key", key)
+			if err != nil {
+				return fmt.Errorf("error decoding key #%d: %w", i+1, err)
+			}
+			keylist = append(keylist, key)
+		}
+		log.Info("Rebuilding the tree", "root", rootC)
+	} else {
+		return fmt.Errorf("usage: %s root key1 [key 2...]", ctx.App.Name)
+	}
+
+	serializedRoot, err := chaindb.Get(rootC[:])
+	if err != nil {
+		return err
+	}
+	root, err := verkle.ParseNode(serializedRoot, 0, rootC[:])
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(keylist)
+	for i, key := range keylist {
+		log.Info("Reading key", "index", i, "key", keylist[0])
+		root.Get(key, chaindb.Get)
+	}
+
+	os.WriteFile("dump.dot", []byte(verkle.ToDot(root)), 0600)
+
+	log.Info("Tree was dumped to file")
 	return nil
 }
