@@ -94,8 +94,9 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
 	}
 	if len(balance) > 0 {
-		for i := range balance {
+		for i := 0; i < len(balance)/2; i++ {
 			balance[len(balance)-i-1], balance[i] = balance[i], balance[len(balance)-i-1]
+
 		}
 	}
 	acc.Balance = new(big.Int).SetBytes(balance[:])
