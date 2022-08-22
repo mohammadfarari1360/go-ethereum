@@ -291,11 +291,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
-			var (
-				laststem          [31]byte
-				translatedStorage = map[string][][]byte{}
-			)
-			copy(laststem[:], stem)
+			var translatedStorage = map[string][][]byte{}
 
 			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
 			if err != nil {
@@ -303,30 +299,46 @@ func convertToVerkle(ctx *cli.Context) error {
 				return err
 			}
 			for storageIt.Next() {
+				// The value is RLP-encoded, decode it
+				var (
+					value     []byte   // slot value after RLP decoding
+					safeValue [32]byte // 32-byte aligned value
+				)
+				if err := rlp.DecodeBytes(storageIt.Slot(), &value); err != nil {
+					return fmt.Errorf("error decoding bytes %x: %w", storageIt.Slot(), err)
+				}
+				copy(safeValue[32-len(value):], value)
+
 				slotnr := rawdb.ReadPreimage(chaindb, storageIt.Hash())
 				if slotnr == nil {
 					return fmt.Errorf("could not find preimage for slot %x", storageIt.Hash())
 				}
-				slotkey := tutils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrPoint, uint256.NewInt(0).SetBytes(slotnr))
 
-				var value []byte
-				if err := rlp.DecodeBytes(storageIt.Slot(), &value); err != nil {
-					return fmt.Errorf("error decoding bytes %x: %w", storageIt.Slot(), err)
-				}
-
-				// if the slot belongs to the header group, store it there
-				if bytes.Equal(slotkey[:31], stem) {
-					newValues[int(slotkey[31])] = value[:]
+				// if the slot belongs to the header group, store it there - and skip
+				// calculating the slot key.
+				slotnrbig := uint256.NewInt(0).SetBytes(slotnr)
+				if slotnrbig.Cmp(uint256.NewInt(64)) < 0 {
+					newValues[64+slotnr[31]] = safeValue[:]
 					continue
 				}
 
-				if translatedStorage[string(slotkey[:31])] == nil {
-					translatedStorage[string(slotkey[:31])] = make([][]byte, 256)
+				// Slot not in the header group, get its tree key
+				slotkey := tutils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrPoint, slotnrbig)
+
+				// Create the group if need be
+				values := translatedStorage[string(slotkey[:31])]
+				if values == nil {
+					values = make([][]byte, 256)
 				}
-				translatedStorage[string(slotkey[:31])][slotkey[31]] = value
+
+				// Store value in group
+				values[slotkey[31]] = safeValue[:]
+				translatedStorage[string(slotkey[:31])] = values
 			}
 			for s, vs := range translatedStorage {
-				treeHuggers[int(s[0])/rootPerCPU] <- &treeHugger{stem: []byte(s), node: verkle.NewLeafNode([]byte(s), vs)}
+				var k [31]byte
+				copy(k[:], []byte(s))
+				treeHuggers[int(s[0])/rootPerCPU] <- &treeHugger{stem: k[:], node: verkle.NewLeafNode(k[:], vs)}
 			}
 			storageIt.Release()
 			if storageIt.Error() != nil {
