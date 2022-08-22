@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	tutils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
@@ -307,8 +308,10 @@ func convertToVerkle(ctx *cli.Context) error {
 				}
 				slotkey := tutils.GetTreeKeyStorageSlot(addr, uint256.NewInt(0).SetBytes(slotnr))
 
-				var value [32]byte
-				copy(value[:len(storageIt.Slot())-1], storageIt.Slot())
+				var value []byte
+				if err := rlp.DecodeBytes(storageIt.Slot(), &value); err != nil {
+					return fmt.Errorf("error decoding bytes %x: %w", storageIt.Slot(), err)
+				}
 
 				// if the slot belongs to the header group, store it there
 				if bytes.Equal(slotkey[:31], stem) {
@@ -317,18 +320,22 @@ func convertToVerkle(ctx *cli.Context) error {
 				}
 
 				// if the slot belongs to the same group as the previous
-				// one, add it to the current group of values.
+				// slot, add it to the current group of values.
 				if bytes.Equal(laststem[:], slotkey[:31]) {
 					values[slotkey[31]] = value[:]
 					continue
 				}
 
+				// At this point, we landed inside a new group
+
 				// flush the previous group, iff it's not the header group
-				if !bytes.Equal(stem[:31], laststem[:]) {
+				if !bytes.Equal(stem[:31], laststem[:31]) {
 					treeHuggers[int(laststem[0])/rootPerCPU] <- &treeHugger{stem: laststem[:], node: verkle.NewLeafNode(laststem[:], values)}
 				}
+
+				copy(laststem[:], slotkey[:31])
 			}
-			if !bytes.Equal(laststem[:31], stem[:31]) {
+			if !bytes.Equal(stem[:31], laststem[:31]) {
 				treeHuggers[int(laststem[0])/rootPerCPU] <- &treeHugger{stem: laststem[:], node: verkle.NewLeafNode(laststem[:], values)}
 			}
 			storageIt.Release()
