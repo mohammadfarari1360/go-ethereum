@@ -256,7 +256,8 @@ func convertToVerkle(ctx *cli.Context) error {
 		if addr == nil {
 			return fmt.Errorf("could not find preimage for address %x %v %v", accIt.Hash(), acc, accIt.Error())
 		}
-		stem := tutils.GetTreeKeyVersion(addr)
+		addrPoint := tutils.EvaluateAddressPoint(addr)
+		stem := tutils.GetTreeKeyVersion(addr) // FIXME redundant with previous line
 
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
@@ -269,7 +270,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 			for i := 128; i < len(chunks)/32; {
 				values := make([][]byte, 256)
-				chunkkey := tutils.GetTreeKeyCodeChunk(addr, uint256.NewInt(uint64(i)))
+				chunkkey := tutils.GetTreeKeyCodeChunkWithEvaluatedAddress(addrPoint, uint256.NewInt(uint64(i)))
 				j := i
 				for ; (j-i) < 256 && j < len(chunks)/32; j++ {
 					values[(j-128)%256] = chunks[32*j : 32*(j+1)]
@@ -291,8 +292,8 @@ func convertToVerkle(ctx *cli.Context) error {
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
 			var (
-				laststem [31]byte
-				values   = make([][]byte, 256)
+				laststem          [31]byte
+				translatedStorage = map[string][][]byte{}
 			)
 			copy(laststem[:], stem)
 
@@ -306,7 +307,7 @@ func convertToVerkle(ctx *cli.Context) error {
 				if slotnr == nil {
 					return fmt.Errorf("could not find preimage for slot %x", storageIt.Hash())
 				}
-				slotkey := tutils.GetTreeKeyStorageSlot(addr, uint256.NewInt(0).SetBytes(slotnr))
+				slotkey := tutils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrPoint, uint256.NewInt(0).SetBytes(slotnr))
 
 				var value []byte
 				if err := rlp.DecodeBytes(storageIt.Slot(), &value); err != nil {
@@ -319,24 +320,13 @@ func convertToVerkle(ctx *cli.Context) error {
 					continue
 				}
 
-				// if the slot belongs to the same group as the previous
-				// slot, add it to the current group of values.
-				if bytes.Equal(laststem[:], slotkey[:31]) {
-					values[slotkey[31]] = value[:]
-					continue
+				if translatedStorage[string(slotkey[:31])] == nil {
+					translatedStorage[string(slotkey[:31])] = make([][]byte, 256)
 				}
-
-				// At this point, we landed inside a new group
-
-				// flush the previous group, iff it's not the header group
-				if !bytes.Equal(stem[:31], laststem[:31]) {
-					treeHuggers[int(laststem[0])/rootPerCPU] <- &treeHugger{stem: laststem[:], node: verkle.NewLeafNode(laststem[:], values)}
-				}
-
-				copy(laststem[:], slotkey[:31])
+				translatedStorage[string(slotkey[:31])][slotkey[31]] = value
 			}
-			if !bytes.Equal(stem[:31], laststem[:31]) {
-				treeHuggers[int(laststem[0])/rootPerCPU] <- &treeHugger{stem: laststem[:], node: verkle.NewLeafNode(laststem[:], values)}
+			for s, vs := range translatedStorage {
+				treeHuggers[int(s[0])/rootPerCPU] <- &treeHugger{stem: []byte(s), node: verkle.NewLeafNode([]byte(s), vs)}
 			}
 			storageIt.Release()
 			if storageIt.Error() != nil {
