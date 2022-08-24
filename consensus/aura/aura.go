@@ -19,6 +19,7 @@ package aura
 import (
 	"bytes"
 	"errors"
+	"io"
 	"math/big"
 	"sync"
 	"time"
@@ -37,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 	lru "github.com/hashicorp/golang-lru"
-	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -131,35 +131,13 @@ var (
 // backing account.
 type SignerFn func(accounts.Account, []byte) ([]byte, error)
 
-// sigHash returns the hash which is used as input for the proof-of-authority
-// signing. It is the hash of the entire header apart from the 65 byte signature
-// contained at the end of the extra data.
-//
-// Note, the method requires the extra data to be at least 65 bytes, otherwise it
-// panics. This is done to avoid accidentally using both forms (signature present
-// or not), which could be abused to produce different hashes for the same header.
-func sigHash(header *types.Header) (hash common.Hash) {
-	hasher := sha3.NewLegacyKeccak256()
-
-	rlp.Encode(hasher, []interface{}{
-		header.ParentHash,
-		header.UncleHash,
-		header.Coinbase,
-		header.Root,
-		header.TxHash,
-		header.ReceiptHash,
-		header.Bloom,
-		header.Difficulty,
-		header.Number,
-		header.GasLimit,
-		header.GasUsed,
-		header.Time,
-		header.Extra[:len(header.Extra)-65], // Yes, this will panic if extra is too short
-		header.MixDigest,
-		header.Nonce,
-	})
-	hasher.Sum(hash[:0])
-	return hash
+func sealHash(header *types.Header) common.Hash {
+	hasher := new(bytes.Buffer)
+	encodeSigHeader(hasher, header)
+	signatureHash := crypto.Keccak256(hasher.Bytes())
+	var arr [32]byte
+	copy(arr[:], signatureHash)
+	return arr
 }
 
 // ecrecover extracts the Ethereum account address from a signed header.
@@ -169,13 +147,12 @@ func ecrecover(header *types.Header, sigcache *lru.ARCCache) (common.Address, er
 	if address, known := sigcache.Get(hash); known {
 		return address.(common.Address), nil
 	}
-	// Retrieve the signature from the header extra-data
 	if len(header.Signature) < extraSeal {
 		return common.Address{}, errMissingSignature
 	}
 
 	// Recover the public key and the Ethereum address
-	pubkey, err := crypto.Ecrecover(sigHash(header).Bytes(), header.Signature)
+	pubkey, err := crypto.Ecrecover(sealHash(header).Bytes(), header.Signature)
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -452,11 +429,6 @@ func (a *Aura) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	if number == 0 {
 		return errUnknownBlock
 	}
-	// Retrieve the snapshot needed to verify this header and cache it
-	// snap, err := a.snapshot(chain, number-1, header.ParentHash, parents)
-	// if err != nil {
-	// 	return err
-	// }
 
 	// Resolve the authorization key and check against signers
 	signer, err := ecrecover(header, a.signatures)
@@ -465,31 +437,12 @@ func (a *Aura) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	ts := header.Time
-	step := ts % a.config.Period
+	step := ts / a.config.Period
 	turn := step % uint64(len(a.config.Authorities))
 	if signer != a.config.Authorities[turn] {
 		// not authorized to sign
-		return errUnauthorized
+		return fmt.Errorf("%w: block number=%d", errUnauthorized, header.Number)
 	}
-	// if _, ok := snap.Signers[signer]; !ok {
-	// 	return errUnauthorized
-	// }
-	// for seen, recent := range snap.Recents {
-	// 	if recent == signer {
-	// 		// Signer is among recents, only fail if the current block doesn't shift it out
-	// 		if limit := uint64(len(snap.Signers)/2 + 1); seen > number-limit {
-	// 			return errUnauthorized
-	// 		}
-	// 	}
-	// }
-	// Ensure that the difficulty corresponds to the turn-ness of the signer
-	//inturn := snap.inturn(header.Number.Uint64(), signer)
-	//if inturn && header.Difficulty.Cmp(diffInTurn) != 0 {
-	//	return errInvalidDifficulty
-	//}
-	//if !inturn && header.Difficulty.Cmp(diffNoTurn) != 0 {
-	//	return errInvalidDifficulty
-	//}
 	return nil
 }
 
@@ -536,7 +489,6 @@ func (a *Aura) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given, and returns the final block.
 func (a *Aura) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	state.AddBalance(a.signer, big.NewInt(5*(10^18)))
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	header.UncleHash = types.CalcUncleHash(nil)
@@ -615,7 +567,7 @@ func (a *Aura) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	//	log.Trace("Out-of-turn signing requested", "wiggle", common.PrettyDuration(wiggle))
 	//}
 	// Sign all the things!
-	sighash, err := signFn(accounts.Account{Address: signer}, sigHash(header).Bytes())
+	sighash, err := signFn(accounts.Account{Address: signer}, header.Hash().Bytes())
 	if err != nil {
 		return err
 	}
@@ -646,7 +598,7 @@ func (a *Aura) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, pa
 
 // SealHash returns the hash of a block prior to it being sealed.
 func (a *Aura) SealHash(header *types.Header) common.Hash {
-	return sigHash(header)
+	return sealHash(header)
 }
 
 // Close implements consensus.Engine. It's a noop for clique as there is are no background threads.
@@ -663,4 +615,28 @@ func (a *Aura) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 		Service:   &API{chain: chain, aura: a},
 		Public:    false,
 	}}
+}
+
+func encodeSigHeader(w io.Writer, header *types.Header) {
+	enc := []interface{}{
+		header.ParentHash,
+		header.UncleHash,
+		header.Coinbase,
+		header.Root,
+		header.TxHash,
+		header.ReceiptHash,
+		header.Bloom,
+		header.Difficulty,
+		header.Number,
+		header.GasLimit,
+		header.GasUsed,
+		header.Time,
+		header.Extra,
+	}
+	if header.BaseFee != nil {
+		enc = append(enc, header.BaseFee)
+	}
+	if err := rlp.Encode(w, enc); err != nil {
+		panic("can't encode: " + err.Error())
+	}
 }

@@ -277,10 +277,10 @@ var (
 		GrayGlacierBlock:    big.NewInt(15_050_000),
 		Aura: &AuraConfig{
 			Authorities: []common.Address{
-				common.HexToAddress("0x0082a7bf6aaadab094061747872243059c3c6a07"),
-				common.HexToAddress("0x00faa37564140c1a5e96095f05466b9f73441e44"),
+				common.HexToAddress("0xcace5b3c29211740e595850e80478416ee77ca21"),
 			},
 			Difficulty: big.NewInt(131072),
+			Period:     5,
 		},
 	}
 
