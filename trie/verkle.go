@@ -96,7 +96,6 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 	if len(balance) > 0 {
 		for i := 0; i < len(balance)/2; i++ {
 			balance[len(balance)-i-1], balance[i] = balance[i], balance[len(balance)-i-1]
-
 		}
 	}
 	acc.Balance = new(big.Int).SetBytes(balance[:])
@@ -175,6 +174,53 @@ func (trie *VerkleTrie) TryUpdate(key, value []byte) error {
 	return trie.root.Insert(key, value, func(h []byte) ([]byte, error) {
 		return trie.db.DiskDB().Get(h)
 	})
+}
+
+func (t *VerkleTrie) TryDeleteAccount(key []byte) error {
+	var (
+		err                                error
+		balancekey, cskey, ckkey, noncekey [32]byte
+	)
+
+	// Only evaluate the polynomial once
+	versionkey := utils.GetTreeKeyVersion(key[:])
+	copy(balancekey[:], versionkey)
+	balancekey[31] = utils.BalanceLeafKey
+	copy(noncekey[:], versionkey)
+	noncekey[31] = utils.NonceLeafKey
+	copy(cskey[:], versionkey)
+	cskey[31] = utils.CodeSizeLeafKey
+	copy(ckkey[:], versionkey)
+	ckkey[31] = utils.CodeKeccakLeafKey
+
+	if err = t.TryDelete(versionkey); err != nil {
+		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+	}
+	if err = t.TryDelete(noncekey[:]); err != nil {
+		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+	}
+	if err = t.TryDelete(balancekey[:]); err != nil {
+		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+	}
+	if err = t.TryDelete(ckkey[:]); err != nil {
+		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+	}
+	// TODO figure out if the code size needs to be updated, too
+
+	// XXX hack to flush to the db until the snapshot is available
+	t.root.(*verkle.InternalNode).Flush(func(node verkle.VerkleNode) {
+		comm := node.ComputeCommitment()
+		s, err := node.Serialize()
+		if err != nil {
+			panic(err)
+		}
+		commB := comm.Bytes()
+		if err := t.db.DiskDB().Put(commB[:], s); err != nil {
+			log.Error("error writing trie data into db", "err", err)
+		}
+	})
+
+	return nil
 }
 
 // TryDelete removes any existing value for key from the trie. If a node was not
