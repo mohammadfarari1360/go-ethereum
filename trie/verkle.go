@@ -111,41 +111,34 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 	return acc, nil
 }
 
+var zero [32]byte
+
 func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
 	var (
-		err                                error
-		nonce, balance                     [32]byte
-		balancekey, cskey, ckkey, noncekey [32]byte
+		err            error
+		nonce, balance [32]byte
+		values         = make([][]byte, verkle.NodeWidth)
+		stem           = utils.GetTreeKeyVersion(key[:])
+		leaf           = verkle.NewLeafNode(stem[:31], values)
 	)
 
 	// Only evaluate the polynomial once
-	versionkey := utils.GetTreeKeyVersion(key[:])
-	copy(balancekey[:], versionkey)
-	balancekey[31] = utils.BalanceLeafKey
-	copy(noncekey[:], versionkey)
-	noncekey[31] = utils.NonceLeafKey
-	copy(cskey[:], versionkey)
-	cskey[31] = utils.CodeSizeLeafKey
-	copy(ckkey[:], versionkey)
-	ckkey[31] = utils.CodeKeccakLeafKey
+	values[utils.VersionLeafKey] = zero[:]
+	values[utils.NonceLeafKey] = nonce[:]
+	values[utils.BalanceLeafKey] = balance[:]
+	values[utils.CodeKeccakLeafKey] = acc.CodeHash[:]
 
-	if err = t.TryUpdate(versionkey, []byte{0}); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
 	binary.LittleEndian.PutUint64(nonce[:], acc.Nonce)
-	if err = t.TryUpdate(noncekey[:], nonce[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
 	bbytes := acc.Balance.Bytes()
 	if len(bbytes) > 0 {
 		for i, b := range bbytes {
 			balance[len(bbytes)-i-1] = b
 		}
 	}
-	if err = t.TryUpdate(balancekey[:], balance[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if err = t.TryUpdate(ckkey[:], acc.CodeHash); err != nil {
+	root := t.root.(*verkle.InternalNode)
+	if err = root.InsertStem(stem, leaf, func(hash []byte) ([]byte, error) {
+		return t.db.diskdb.Get(hash)
+	}, true); err != nil {
 		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
 	}
 	// TODO figure out if the code size needs to be updated, too
