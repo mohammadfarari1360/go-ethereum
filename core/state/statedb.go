@@ -539,12 +539,13 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 				var key []byte
 				var values [][]byte
 				for i := 0; i < len(chunks); i += 32 {
-					if (i%32)%256 == 0 {
+					groupOffset := (i / 32) % 256
+					if groupOffset == 0 {
 						values = make([][]byte, 256)
 						key = trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32))
 					}
-					values[i] = chunks[i : i+32]
-					if (i/32)%256 == 255 || len(chunks)-i <= 32 {
+					values[groupOffset] = chunks[i : i+32]
+					if groupOffset == 255 || len(chunks)-i <= 32 {
 						leaf := verkle.NewLeafNode(key[:31], values)
 						s.trie.(*trie.VerkleTrie).TryUpdateStem(key[:31], leaf)
 					}
