@@ -159,6 +159,12 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	return nil
 }
 
+func (trie *VerkleTrie) TryUpdateStem(key []byte, leaf *verkle.LeafNode) {
+	trie.root.(*verkle.InternalNode).InsertStem(key, leaf, func(h []byte) ([]byte, error) {
+		return trie.db.DiskDB().Get(h)
+	}, false /* catch a code overwrite */)
+}
+
 // TryUpdate associates key with value in the trie. If value has length zero, any
 // existing value is deleted from the trie. The value bytes must not be modified
 // by the caller while they are stored in the trie. If a node was not found in the

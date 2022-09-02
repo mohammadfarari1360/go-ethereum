@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
+	"github.com/gballet/go-verkle"
 	"github.com/holiman/uint256"
 )
 
@@ -532,10 +533,22 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 				s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
 			}
 
+			// XXX pas sûr que tout ça soit vraiment nécessaire
 			if obj.dirtyCode {
 				chunks := trie.ChunkifyCode(obj.code)
+				var key []byte
+				var values [][]byte
 				for i := 0; i < len(chunks); i += 32 {
-					s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32)), chunks[i:i+32])
+					groupOffset := (i / 32) % 256
+					if groupOffset == 0 {
+						values = make([][]byte, 256)
+						key = trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32))
+					}
+					values[groupOffset] = chunks[i : i+32]
+					if groupOffset == 255 || len(chunks)-i <= 32 {
+						leaf := verkle.NewLeafNode(key[:31], values)
+						s.trie.(*trie.VerkleTrie).TryUpdateStem(key[:31], leaf)
+					}
 				}
 			}
 		} else {
@@ -1044,8 +1057,19 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 			if obj.code != nil && obj.dirtyCode {
 				if s.trie.IsVerkle() {
 					chunks := trie.ChunkifyCode(obj.code)
+					var key []byte
+					var values [][]byte
 					for i := 0; i < len(chunks); i += 32 {
-						s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32)), chunks[i:32+i])
+groupOffset := (i/32)%256
+						if groupOffset == 0 {
+							values = make([][]byte, 256)
+							key = trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32))
+						}
+						values[groupOffset] = chunks[i : i+32]
+						if groupOffset == 255 || len(chunks)-i <= 32 {
+							leaf := verkle.NewLeafNode(key[:31], values)
+							s.trie.(*trie.VerkleTrie).TryUpdateStem(key[:31], leaf)
+						}
 					}
 				}
 				rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
