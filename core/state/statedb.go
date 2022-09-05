@@ -515,27 +515,10 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 		s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
 	}
 	if s.trie.IsVerkle() {
-		if len(obj.code) > 0 {
-			cs := make([]byte, 32)
-			binary.LittleEndian.PutUint64(cs, uint64(len(obj.code)))
-			if err := s.trie.TryUpdate(trieUtils.GetTreeKeyCodeSize(addr[:]), cs); err != nil {
-				s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
-			}
-
-			if obj.dirtyCode {
-				if chunks, err := trie.ChunkifyCode(obj.code); err == nil {
-					for i := 0; i < len(chunks); i += 32 {
-						s.trie.TryUpdate(trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32)), chunks[i:i+32])
-					}
-				} else {
-					s.setError(err)
-				}
-			}
-		} else {
-			cs := []byte{0}
-			if err := s.trie.TryUpdate(trieUtils.GetTreeKeyCodeSize(addr[:]), cs); err != nil {
-				s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
-			}
+		cs := make([]byte, 32)
+		binary.LittleEndian.PutUint64(cs, uint64(len(obj.code)))
+		if err := s.trie.TryUpdate(trieUtils.GetTreeKeyCodeSize(addr[:]), cs); err != nil {
+			s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
 		}
 	}
 
