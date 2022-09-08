@@ -119,7 +119,6 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 		nonce, balance [32]byte
 		values         = make([][]byte, verkle.NodeWidth)
 		stem           = utils.GetTreeKeyVersion(key[:])
-		leaf           = verkle.NewLeafNode(stem[:31], values)
 	)
 
 	// Only evaluate the polynomial once
@@ -135,32 +134,22 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 			balance[len(bbytes)-i-1] = b
 		}
 	}
-	root := t.root.(*verkle.InternalNode)
-	if err = root.InsertStem(stem, leaf, func(hash []byte) ([]byte, error) {
+	root := t.root.(*verkle.StatelessNode)
+	if err = root.InsertAtStem(stem, values, func(hash []byte) ([]byte, error) {
+
 		return t.db.diskdb.Get(hash)
 	}, true); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+		return fmt.Errorf("TryUpdateAccount (%x) error: %v", key, err)
 	}
 	// TODO figure out if the code size needs to be updated, too
 
 	// XXX hack to flush to the db until the snapshot is available
-	t.root.(*verkle.InternalNode).Flush(func(node verkle.VerkleNode) {
-		comm := node.ComputeCommitment()
-		s, err := node.Serialize()
-		if err != nil {
-			panic(err)
-		}
-		commB := comm.Bytes()
-		if err := t.db.DiskDB().Put(commB[:], s); err != nil {
-			log.Error("error writing trie data into db", "err", err)
-		}
-	})
 
 	return nil
 }
 
-func (trie *VerkleTrie) TryUpdateStem(key []byte, leaf *verkle.LeafNode) {
-	trie.root.(*verkle.InternalNode).InsertStem(key, leaf, func(h []byte) ([]byte, error) {
+func (trie *VerkleTrie) TryUpdateStem(key []byte, values [][]byte) {
+	trie.root.(*verkle.StatelessNode).InsertAtStem(key, values, func(h []byte) ([]byte, error) {
 		return trie.db.DiskDB().Get(h)
 	}, false /* catch a code overwrite */)
 }
@@ -207,17 +196,6 @@ func (t *VerkleTrie) TryDeleteAccount(key []byte) error {
 	// TODO figure out if the code size needs to be updated, too
 
 	// XXX hack to flush to the db until the snapshot is available
-	t.root.(*verkle.InternalNode).Flush(func(node verkle.VerkleNode) {
-		comm := node.ComputeCommitment()
-		s, err := node.Serialize()
-		if err != nil {
-			panic(err)
-		}
-		commB := comm.Bytes()
-		if err := t.db.DiskDB().Put(commB[:], s); err != nil {
-			log.Error("error writing trie data into db", "err", err)
-		}
-	})
 
 	return nil
 }
@@ -245,20 +223,28 @@ func nodeToDBKey(n verkle.VerkleNode) []byte {
 // and external (for account tries) references.
 func (trie *VerkleTrie) Commit(onleaf LeafCallback) (common.Hash, int, error) {
 	flush := make(chan verkle.VerkleNode)
-	go func() {
-		trie.root.(*verkle.InternalNode).Flush(func(n verkle.VerkleNode) {
-			if onleaf != nil {
-				if leaf, isLeaf := n.(*verkle.LeafNode); isLeaf {
-					for i := 0; i < verkle.NodeWidth; i++ {
-						if leaf.Value(i) != nil {
-							comm := n.ComputeCommitment().Bytes()
-							onleaf(nil, nil, leaf.Value(i), common.BytesToHash(comm[:]))
-						}
+	flusher := func(n verkle.VerkleNode) {
+		if onleaf != nil {
+			if leaf, isLeaf := n.(*verkle.LeafNode); isLeaf {
+				for i := 0; i < verkle.NodeWidth; i++ {
+					if leaf.Value(i) != nil {
+						comm := n.ComputeCommitment().Bytes()
+						onleaf(nil, nil, leaf.Value(i), common.BytesToHash(comm[:]))
 					}
 				}
 			}
-			flush <- n
-		})
+		}
+		flush <- n
+	}
+	go func() {
+		switch root := trie.root.(type) {
+		case *verkle.StatelessNode:
+			root.Flush(flusher)
+		case *verkle.InternalNode:
+			root.Flush(flusher)
+		default:
+			log.Crit("root was not flushed")
+		}
 		close(flush)
 	}()
 	var commitCount int

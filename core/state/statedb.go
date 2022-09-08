@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
-	"github.com/gballet/go-verkle"
 	"github.com/holiman/uint256"
 )
 
@@ -526,36 +525,11 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 		s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
 	}
 	if s.trie.IsVerkle() {
-		if len(obj.code) > 0 {
-			cs := make([]byte, 32)
-			binary.LittleEndian.PutUint64(cs, uint64(len(obj.code)))
-			if err := s.trie.TryUpdate(trieUtils.GetTreeKeyCodeSize(addr[:]), cs); err != nil {
-				s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
-			}
-
-			// XXX pas sûr que tout ça soit vraiment nécessaire
-			if obj.dirtyCode {
-				chunks := trie.ChunkifyCode(obj.code)
-				var key []byte
-				var values [][]byte
-				for i := 0; i < len(chunks); i += 32 {
-					groupOffset := (i / 32) % 256
-					if groupOffset == 0 {
-						values = make([][]byte, 256)
-						key = trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32))
-					}
-					values[groupOffset] = chunks[i : i+32]
-					if groupOffset == 255 || len(chunks)-i <= 32 {
-						leaf := verkle.NewLeafNode(key[:31], values)
-						s.trie.(*trie.VerkleTrie).TryUpdateStem(key[:31], leaf)
-					}
-				}
-			}
-		} else {
-			cs := []byte{0}
-			if err := s.trie.TryUpdate(trieUtils.GetTreeKeyCodeSize(addr[:]), cs); err != nil {
-				s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
-			}
+		cs := make([]byte, 32)
+		binary.LittleEndian.PutUint64(cs, uint64(len(obj.code)))
+		key := trieUtils.GetTreeKeyCodeSize(addr[:])
+		if err := s.trie.TryUpdate(key, cs); err != nil {
+			s.setError(fmt.Errorf("updateStateObject (%x) %x error: %w", addr[:], key, err))
 		}
 	}
 
@@ -1060,15 +1034,14 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 					var key []byte
 					var values [][]byte
 					for i := 0; i < len(chunks); i += 32 {
-groupOffset := (i/32)%256
+						groupOffset := (i / 32) % 256
 						if groupOffset == 0 {
 							values = make([][]byte, 256)
 							key = trieUtils.GetTreeKeyCodeChunkWithEvaluatedAddress(obj.pointEval, uint256.NewInt(uint64(i)/32))
 						}
 						values[groupOffset] = chunks[i : i+32]
 						if groupOffset == 255 || len(chunks)-i <= 32 {
-							leaf := verkle.NewLeafNode(key[:31], values)
-							s.trie.(*trie.VerkleTrie).TryUpdateStem(key[:31], leaf)
+							s.trie.(*trie.VerkleTrie).TryUpdateStem(key[:31], values)
 						}
 					}
 				}
