@@ -143,8 +143,6 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	}
 	// TODO figure out if the code size needs to be updated, too
 
-	// XXX hack to flush to the db until the snapshot is available
-
 	return nil
 }
 
@@ -194,8 +192,6 @@ func (t *VerkleTrie) TryDeleteAccount(key []byte) error {
 		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
 	}
 	// TODO figure out if the code size needs to be updated, too
-
-	// XXX hack to flush to the db until the snapshot is available
 
 	return nil
 }

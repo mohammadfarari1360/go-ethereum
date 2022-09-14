@@ -1238,7 +1238,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		return err
 	}
 	triedb := bc.stateCache.TrieDB()
-	bc.AddRootTranslation(block.Root(), root)
 
 	// If we're running an archive node, always flush
 	if bc.cacheConfig.TrieDirtyDisabled {
@@ -1403,14 +1402,6 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	}
 	defer bc.chainmu.Unlock()
 	return bc.insertChain(chain, true, true)
-}
-
-func (bc *BlockChain) SetVerkleFork(originalRoot, translatedRoot common.Hash) {
-	bc.stateCache.(*state.ForkingDB).Fork(originalRoot, translatedRoot)
-}
-
-func (bc *BlockChain) AddRootTranslation(originalRoot, translatedRoot common.Hash) {
-	bc.stateCache.(*state.ForkingDB).AddTranslation(originalRoot, translatedRoot)
 }
 
 // insertChain is the internal implementation of InsertChain, which assumes that
@@ -1611,11 +1602,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-		// perform the verkle fork if this is the fork block
-		if block.NumberU64() == 230081 {
-			proot := common.HexToHash("0x326321001e813a6882f81c58aac2d6c165792e640480a09d5b48948d52578d41")
-			bc.SetVerkleFork(parent.Root, proot)
-		}
 		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
@@ -1651,7 +1637,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			atomic.StoreUint32(&followupInterrupt, 1)
 			return it.index, err
 		}
-		bc.AddRootTranslation(block.Root(), statedb.IntermediateRoot(false))
 
 		// Update the metrics touched during block processing
 		accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete, we can mark them
