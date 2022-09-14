@@ -1238,6 +1238,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		return err
 	}
 	triedb := bc.stateCache.TrieDB()
+	bc.AddRootTranslation(block.Root(), root)
 
 	// If we're running an archive node, always flush
 	if bc.cacheConfig.TrieDirtyDisabled {

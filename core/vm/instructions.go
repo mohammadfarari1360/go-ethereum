@@ -403,7 +403,7 @@ func touchChunkOnReadAndChargeGas(chunks trie.ChunkedCode, offset uint64, evals 
 		statelessGasCharged uint64
 	)
 
-	// Build the chunk address from the evaluated address of its whole group
+	// Build then\chunk address from the evaluated address of its whole group
 	var index [32]byte
 	copy(index[:], evals[chunknr/256])
 	index[31] = byte((128 + chunknr) % 256)
@@ -418,7 +418,9 @@ func touchChunkOnReadAndChargeGas(chunks trie.ChunkedCode, offset uint64, evals 
 		if deployment {
 			accesses.SetLeafValue(index[:], nil)
 		} else {
-			accesses.SetLeafValue(index[:], chunks[chunknr*32:(chunknr+1)*32])
+			if uint64(len(chunks)) >= (chunknr+1)*32 {
+				accesses.SetLeafValue(index[:], chunks[chunknr*32:(chunknr+1)*32])
+			}
 		}
 	}
 
