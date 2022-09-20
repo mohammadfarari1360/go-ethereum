@@ -113,7 +113,7 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 
 var zero [32]byte
 
-func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
+func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount, code []byte) error {
 	var (
 		err            error
 		nonce, balance [32]byte
@@ -125,7 +125,12 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	values[utils.VersionLeafKey] = zero[:]
 	values[utils.NonceLeafKey] = nonce[:]
 	values[utils.BalanceLeafKey] = balance[:]
+	if len(code) > 0 {
 	values[utils.CodeKeccakLeafKey] = acc.CodeHash[:]
+		cs := make([]byte, 32)
+		binary.LittleEndian.PutUint64(cs, uint64(len(code)))
+		values[utils.CodeSizeLeafKey] = cs
+	}
 
 	binary.LittleEndian.PutUint64(nonce[:], acc.Nonce)
 	bbytes := acc.Balance.Bytes()
@@ -141,7 +146,6 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	}, true); err != nil {
 		return fmt.Errorf("TryUpdateAccount (%x) error: %v", key, err)
 	}
-	// TODO figure out if the code size needs to be updated, too
 
 	return nil
 }

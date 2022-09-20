@@ -521,16 +521,8 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 	// Encode the account and update the account trie
 	addr := obj.Address()
 
-	if err := s.trie.TryUpdateAccount(addr[:], &obj.data); err != nil {
+	if err := s.trie.TryUpdateAccount(addr[:], &obj.data, obj.code); err != nil {
 		s.setError(fmt.Errorf("updateStateObject (%x) error: %w", addr[:], err))
-	}
-	if s.trie.IsVerkle() {
-		cs := make([]byte, 32)
-		binary.LittleEndian.PutUint64(cs, uint64(len(obj.code)))
-		key := trieUtils.GetTreeKeyCodeSize(addr[:])
-		if err := s.trie.TryUpdate(key, cs); err != nil {
-			s.setError(fmt.Errorf("updateStateObject (%x) %x error: %w", addr[:], key, err))
-		}
 	}
 
 	// If state snapshotting is active, cache the data til commit. Note, this
