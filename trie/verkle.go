@@ -134,11 +134,19 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 			balance[len(bbytes)-i-1] = b
 		}
 	}
-	root := t.root.(*verkle.StatelessNode)
-	if err = root.InsertAtStem(stem, values, func(hash []byte) ([]byte, error) {
 
+	flusher := func(hash []byte) ([]byte, error) {
 		return t.db.diskdb.Get(hash)
-	}, true); err != nil {
+	}
+
+	switch root := t.root.(type) {
+	case *verkle.InternalNode:
+		leaf := verkle.NewLeafNode(stem, values)
+		err = root.InsertStem(stem, leaf, flusher, true)
+	case *verkle.StatelessNode:
+		err = root.InsertAtStem(stem, values, flusher, true)
+	}
+	if err != nil {
 		return fmt.Errorf("TryUpdateAccount (%x) error: %v", key, err)
 	}
 	// TODO figure out if the code size needs to be updated, too
@@ -207,11 +215,11 @@ func (trie *VerkleTrie) TryDelete(key []byte) error {
 // Hash returns the root hash of the trie. It does not write to the database and
 // can be used even if the trie doesn't have one.
 func (trie *VerkleTrie) Hash() common.Hash {
-	return trie.root.ComputeCommitment().Bytes()
+	return trie.root.Commitment().Bytes()
 }
 
 func nodeToDBKey(n verkle.VerkleNode) []byte {
-	ret := n.ComputeCommitment().Bytes()
+	ret := n.Commitment().Bytes()
 	return ret[:]
 }
 
@@ -224,7 +232,7 @@ func (trie *VerkleTrie) Commit(onleaf LeafCallback) (common.Hash, int, error) {
 			if leaf, isLeaf := n.(*verkle.LeafNode); isLeaf {
 				for i := 0; i < verkle.NodeWidth; i++ {
 					if leaf.Value(i) != nil {
-						comm := n.ComputeCommitment().Bytes()
+						comm := n.Commitment().Bytes()
 						onleaf(nil, nil, leaf.Value(i), common.BytesToHash(comm[:]))
 					}
 				}
