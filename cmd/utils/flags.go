@@ -2195,13 +2195,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chai
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheGCFlag.Name) {
 		cache.TrieDirtyLimit = ctx.Int(CacheFlag.Name) * ctx.Int(CacheGCFlag.Name) / 100
 	}
-	vmcfg := vm.Config{EnablePreimageRecording: ctx.Bool(VMEnableDebugFlag.Name)} /*, Debug: true, Tracer: logger.NewJSONLogger(&logger.Config{
-		EnableMemory:     false,
-		DisableStack:     false,
-		DisableStorage:   false,
-		EnableReturnData: false,
-		Debug:            true,
-	}, os.Stdout)}*/
+	vmcfg := vm.Config{EnablePreimageRecording: ctx.Bool(VMEnableDebugFlag.Name)}
 
 	// TODO(rjl493456442) disable snapshot generation/wiping if the chain is read only.
 	// Disable transaction indexing/unindexing by default.
