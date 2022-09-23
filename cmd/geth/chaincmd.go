@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"runtime/pprof"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -228,15 +227,6 @@ func importChain(ctx *cli.Context) error {
 
 	chain, db := utils.MakeChain(ctx, stack)
 	defer db.Close()
-
-	f, err := os.Create("cpu.out")
-	if err != nil {
-		fmt.Println("could not create CPU profile: ", err)
-		os.Exit(1)
-	}
-	defer f.Close()
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
 
 	// Start periodically gathering memory profiles
 	var peakMemAlloc, peakMemSys uint64

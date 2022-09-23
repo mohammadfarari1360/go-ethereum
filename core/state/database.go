@@ -122,7 +122,14 @@ func NewDatabase(db ethdb.Database) Database {
 // large memory cache.
 func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 	csc, _ := lru.New(codeSizeCacheSize)
-	return &VerkleDB{
+	if config != nil && config.UseVerkle {
+		return &VerkleDB{
+			db:            trie.NewDatabaseWithConfig(db, config),
+			codeSizeCache: csc,
+			codeCache:     fastcache.New(codeCacheSize),
+		}
+	}
+	return &cachingDB{
 		db:            trie.NewDatabaseWithConfig(db, config),
 		codeSizeCache: csc,
 		codeCache:     fastcache.New(codeCacheSize),
@@ -226,9 +233,9 @@ func (db *VerkleDB) OpenTrie(root common.Hash) (Trie, error) {
 
 	r, err := verkle.ParseNode(payload, 0, root[:])
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	return trie.NewVerkleTrie(r, db.db), nil
+	return trie.NewVerkleTrie(r, db.db), err
 }
 
 // OpenStorageTrie opens the storage trie of an account.
