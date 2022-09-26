@@ -203,7 +203,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	if !evm.StateDB.Exist(addr) {
 		if !isPrecompile && evm.chainRules.IsEIP158 && value.Sign() == 0 {
 			if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
-				// proof of absence
+				// prove the absence of the account until now
 				tryConsumeGas(&gas, evm.Accesses.TouchAndChargeProofOfAbsence(caller.Address().Bytes()))
 			}
 			// Calling a non existing account, don't do anything, but ping the tracer

@@ -553,7 +553,7 @@ func (s *stateObject) CodeSize(db Database) int {
 	if bytes.Equal(s.CodeHash(), emptyCodeHash) {
 		if s.db.trie.IsVerkle() {
 			var sz [32]byte
-			s.db.witness.SetLeafValuesMessageCall(s.address.Bytes(), sz[:])
+			s.db.witness.SetLeafValuesMessageCall(s.address.Bytes(), sz[:], s.CodeHash())
 		}
 		return 0
 	}
@@ -564,7 +564,7 @@ func (s *stateObject) CodeSize(db Database) int {
 	if s.db.trie.IsVerkle() {
 		var sz [32]byte
 		binary.LittleEndian.PutUint64(sz[:8], uint64(size))
-		s.db.witness.SetLeafValuesMessageCall(s.address.Bytes(), sz[:])
+		s.db.witness.SetLeafValuesMessageCall(s.address.Bytes(), sz[:], s.CodeHash())
 	}
 	return size
 }

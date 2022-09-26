@@ -290,7 +290,7 @@ func (t *Trie) Update(key, value []byte) {
 	}
 }
 
-func (t *Trie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
+func (t *Trie) TryUpdateAccount(key []byte, acc *types.StateAccount, _ []byte) error {
 	data, err := rlp.EncodeToBytes(acc)
 	if err != nil {
 		return fmt.Errorf("can't encode object at %x: %w", key[:], err)

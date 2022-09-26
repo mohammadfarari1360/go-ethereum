@@ -87,14 +87,14 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 
 	nonce, err := t.TryGet(noncekey[:])
 	if err != nil {
-		return nil, fmt.Errorf("TryGetAccount (%x) error: %v", key, err)
+		return nil, fmt.Errorf("TryGetAccount (nonce for address %x) error: %w", key, err)
 	}
 	if len(nonce) > 0 {
 		acc.Nonce = binary.LittleEndian.Uint64(nonce)
 	}
 	balance, err := t.TryGet(balancekey[:])
 	if err != nil {
-		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+		return nil, fmt.Errorf("TryGetAccount (balance for address %x) error: %w", key, err)
 	}
 	if len(balance) > 0 {
 		for i := 0; i < len(balance)/2; i++ {
@@ -102,21 +102,24 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 		}
 	}
 	acc.Balance = new(big.Int).SetBytes(balance[:])
-	ck, err := t.TryGet(ckkey[:])
+	cs, err := t.TryGet(cskey[:])
 	if err != nil {
-		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-
+		return nil, fmt.Errorf("TryGetAccount (code size read for address %x) error: %w", key, err)
 	}
-	acc.CodeHash = ck
-
-	// TODO fix the code size as well
+	if len(cs) > 0 {
+		ck, err := t.TryGet(ckkey[:])
+		if err != nil {
+			return nil, fmt.Errorf("TryGetAccount (code keccak read for address %x) error: %w", key, err)
+		}
+		acc.CodeHash = ck
+	}
 
 	return acc, nil
 }
 
 var zero [32]byte
 
-func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
+func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount, code []byte) error {
 	var (
 		err            error
 		nonce, balance [32]byte
@@ -128,7 +131,12 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	values[utils.VersionLeafKey] = zero[:]
 	values[utils.NonceLeafKey] = nonce[:]
 	values[utils.BalanceLeafKey] = balance[:]
-	values[utils.CodeKeccakLeafKey] = acc.CodeHash[:]
+	if len(code) > 0 {
+		var cs [32]byte
+		values[utils.CodeKeccakLeafKey] = acc.CodeHash[:]
+		binary.LittleEndian.PutUint64(cs[:], uint64(len(code)))
+		values[utils.CodeSizeLeafKey] = cs[:]
+	}
 
 	binary.LittleEndian.PutUint64(nonce[:], acc.Nonce)
 	bbytes := acc.Balance.Bytes()
@@ -152,7 +160,6 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 	if err != nil {
 		return fmt.Errorf("TryUpdateAccount (%x) error: %v", key, err)
 	}
-	// TODO figure out if the code size needs to be updated, too
 
 	return nil
 }
@@ -175,44 +182,14 @@ func (trie *VerkleTrie) TryUpdate(key, value []byte) error {
 }
 
 func (t *VerkleTrie) TryDeleteAccount(key []byte) error {
-	var (
-		err                                error
-		balancekey, cskey, ckkey, noncekey [32]byte
-	)
-
-	// Only evaluate the polynomial once
-	// TODO InsertStem with overwrite of values 0
-	versionkey := utils.GetTreeKeyVersion(key[:])
-	copy(balancekey[:], versionkey)
-	balancekey[31] = utils.BalanceLeafKey
-	copy(noncekey[:], versionkey)
-	noncekey[31] = utils.NonceLeafKey
-	copy(cskey[:], versionkey)
-	cskey[31] = utils.CodeSizeLeafKey
-	copy(ckkey[:], versionkey)
-	ckkey[31] = utils.CodeKeccakLeafKey
-
-	if err = t.TryDelete(versionkey); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if err = t.TryDelete(noncekey[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if err = t.TryDelete(balancekey[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if err = t.TryDelete(ckkey[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	// TODO figure out if the code size needs to be updated, too
-
+	// This is post removal of SELFDESTRUCT
 	return nil
 }
 
 // TryDelete removes any existing value for key from the trie. If a node was not
 // found in the database, a trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryDelete(key []byte) error {
-	return trie.root.Delete(key, func(h []byte) ([]byte, error) {
+	return trie.root.Insert(key, zero[:], func(h []byte) ([]byte, error) {
 		return trie.db.DiskDB().Get(h)
 	})
 }
