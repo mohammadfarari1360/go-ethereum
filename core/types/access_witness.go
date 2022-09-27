@@ -17,9 +17,11 @@
 package types
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
@@ -377,7 +379,6 @@ func (aw *AccessWitness) TouchAndChargeContractCreateInit(addr []byte, createSen
 	if createSendsValue {
 		gas += aw.TouchAddressOnWriteAndComputeGas(balancekey[:])
 	}
-	gas += aw.TouchAddressOnWriteAndComputeGas(ckkey[:])
 	return gas
 }
 
@@ -402,7 +403,6 @@ func (aw *AccessWitness) TouchAndChargeContractCreateCompleted(addr []byte, with
 	ckkey[31] = utils.CodeKeccakLeafKey
 
 	gas += aw.TouchAddressOnWriteAndComputeGas(versionkey)
-	gas += aw.TouchAddressOnWriteAndComputeGas(balancekey[:])
 	gas += aw.TouchAddressOnWriteAndComputeGas(cskey[:])
 	gas += aw.TouchAddressOnWriteAndComputeGas(ckkey[:])
 	gas += aw.TouchAddressOnWriteAndComputeGas(noncekey[:])
@@ -422,8 +422,8 @@ func (aw *AccessWitness) SetLeafValuesContractCreateCompleted(addr, codeSize, co
 
 func (aw *AccessWitness) TouchTxOriginAndComputeGas(originAddr []byte) uint64 {
 	var (
-		balancekey, noncekey [32]byte
-		gas                  uint64
+		balancekey, noncekey, cskey [32]byte
+		gas                         uint64
 	)
 
 	// Only evaluate the polynomial once
@@ -432,10 +432,13 @@ func (aw *AccessWitness) TouchTxOriginAndComputeGas(originAddr []byte) uint64 {
 	balancekey[31] = utils.BalanceLeafKey
 	copy(noncekey[:], versionkey)
 	noncekey[31] = utils.NonceLeafKey
+	copy(cskey[:], versionkey)
+	cskey[31] = utils.CodeSizeLeafKey
 
 	gas += aw.TouchAddressOnReadAndComputeGas(versionkey)
 	gas += aw.TouchAddressOnWriteAndComputeGas(noncekey[:])
 	gas += aw.TouchAddressOnWriteAndComputeGas(balancekey[:])
+	gas += aw.TouchAddressOnReadAndComputeGas(cskey[:])
 
 	return gas
 }
@@ -448,8 +451,6 @@ func (aw *AccessWitness) TouchTxExistingAndComputeGas(targetAddr []byte, sendsVa
 
 	// Only evaluate the polynomial once
 	versionkey := aw.GetTreeKeyVersionCached(targetAddr[:])
-	copy(balancekey[:], versionkey)
-	balancekey[31] = utils.BalanceLeafKey
 	copy(noncekey[:], versionkey)
 	noncekey[31] = utils.NonceLeafKey
 
@@ -457,6 +458,8 @@ func (aw *AccessWitness) TouchTxExistingAndComputeGas(targetAddr []byte, sendsVa
 	gas += aw.TouchAddressOnReadAndComputeGas(noncekey[:])
 
 	if sendsValue {
+		copy(balancekey[:], versionkey)
+		balancekey[31] = utils.BalanceLeafKey
 		gas += aw.TouchAddressOnWriteAndComputeGas(balancekey[:])
 	}
 
@@ -504,6 +507,9 @@ func (aw *AccessWitness) SetTxExistingTouchedLeaves(targetAddr, targetBalance, t
 	aw.SetLeafValue(noncekey[:], targetNonce)
 }
 
+var emptyCodeHash = crypto.Keccak256Hash(nil)
+// SetGetObjectTouchedLeaves is called by newObject to initialize the witness with
+// an account's initial values.
 func (aw *AccessWitness) SetGetObjectTouchedLeaves(targetAddr, version, targetBalance, targetNonce, targetCodeHash []byte) {
 	var balancekey, ckkey, noncekey [32]byte
 	versionkey := aw.GetTreeKeyVersionCached(targetAddr[:])
@@ -517,7 +523,9 @@ func (aw *AccessWitness) SetGetObjectTouchedLeaves(targetAddr, version, targetBa
 	aw.SetLeafValue(versionkey, version[:])
 	aw.SetLeafValue(balancekey[:], targetBalance)
 	aw.SetLeafValue(noncekey[:], targetNonce)
-	aw.SetLeafValue(ckkey[:], targetCodeHash)
+	if !bytes.Equal(targetCodeHash, common.Hash{}.Bytes()) && !bytes.Equal(targetCodeHash, emptyCodeHash[:]) {
+		aw.SetLeafValue(ckkey[:], targetCodeHash)
+	}
 }
 
 func (aw *AccessWitness) SetObjectCodeTouchedLeaves(addr, cs, ch []byte) {

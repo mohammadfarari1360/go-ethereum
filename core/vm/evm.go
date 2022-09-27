@@ -434,7 +434,6 @@ func (c *codeAndHash) Hash() common.Hash {
 
 // create creates a new contract using code as deployment code.
 func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64, value *big.Int, address common.Address, typ OpCode) ([]byte, common.Address, uint64, error) {
-	var zeroVerkleLeaf [32]byte
 
 	// Depth check execution. Fail if we're trying to execute above the
 	// limit.
@@ -473,6 +472,9 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	contract := NewContract(caller, AccountRef(address), value, gas)
 	contract.SetCodeOptionalHash(&address, codeAndHash)
 	contract.IsDeployment = true
+	if evm.chainConfig.IsCancun(evm.Context.BlockNumber) {
+		contract.UseGas(evm.StateDB.Witness().TouchAndChargeContractCreateInit(address[:], value.Sign() != 0))
+	}
 
 	if evm.Config.Debug {
 		if evm.depth == 0 {
@@ -524,7 +526,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 			evm.StateDB.RevertToSnapshot(snapshot)
 			err = ErrOutOfGas
 		} else {
-			evm.Accesses.SetLeafValuesContractCreateCompleted(address.Bytes()[:], zeroVerkleLeaf[:], zeroVerkleLeaf[:])
+			evm.Accesses.SetLeafValuesContractCreateCompleted(address.Bytes()[:], nil, nil)
 		}
 	}
 

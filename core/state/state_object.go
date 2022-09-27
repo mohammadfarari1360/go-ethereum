@@ -106,7 +106,18 @@ func (s *stateObject) empty() bool {
 
 // newObject creates a state object.
 func newObject(db *StateDB, address common.Address, data types.StateAccount) *stateObject {
-	if db.trie.IsVerkle() {
+	if data.Balance == nil {
+		data.Balance = new(big.Int)
+	}
+	if data.CodeHash == nil {
+		data.CodeHash = emptyCodeHash
+	}
+	if data.Root == (common.Hash{}) {
+		data.Root = emptyRoot
+	}
+	var pointEval *verkle.Point
+	if db.GetTrie().IsVerkle() {
+		pointEval = trieUtils.EvaluateAddressPoint(address.Bytes())
 		var nonce, balance, version []byte
 
 		// preserve nil as a balance value, it means it's not in the tree
@@ -122,20 +133,6 @@ func newObject(db *StateDB, address common.Address, data types.StateAccount) *st
 			binary.LittleEndian.PutUint64(nonce[:8], data.Nonce)
 		}
 		db.witness.SetGetObjectTouchedLeaves(address.Bytes(), version, balance[:], nonce[:], data.CodeHash)
-	}
-
-	if data.Balance == nil {
-		data.Balance = new(big.Int)
-	}
-	if data.CodeHash == nil {
-		data.CodeHash = emptyCodeHash
-	}
-	if data.Root == (common.Hash{}) {
-		data.Root = emptyRoot
-	}
-	var pointEval *verkle.Point
-	if db.GetTrie().IsVerkle() {
-		pointEval = trieUtils.EvaluateAddressPoint(address.Bytes())
 	}
 
 	return &stateObject{
@@ -524,10 +521,6 @@ func (s *stateObject) Code(db Database) []byte {
 		return s.code
 	}
 	if bytes.Equal(s.CodeHash(), emptyCodeHash) {
-		if s.db.GetTrie().IsVerkle() {
-			// Mark the code size and code hash as empty
-			s.db.witness.SetObjectCodeTouchedLeaves(s.address.Bytes(), nil, nil)
-		}
 		return nil
 	}
 	code, err := db.ContractCode(s.addrHash, common.BytesToHash(s.CodeHash()))
@@ -551,10 +544,6 @@ func (s *stateObject) CodeSize(db Database) int {
 		return len(s.code)
 	}
 	if bytes.Equal(s.CodeHash(), emptyCodeHash) {
-		if s.db.trie.IsVerkle() {
-			var sz [32]byte
-			s.db.witness.SetLeafValuesMessageCall(s.address.Bytes(), sz[:], s.CodeHash())
-		}
 		return 0
 	}
 	size, err := db.ContractCodeSize(s.addrHash, common.BytesToHash(s.CodeHash()))

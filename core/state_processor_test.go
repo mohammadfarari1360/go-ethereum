@@ -394,10 +394,10 @@ func TestProcessVerkle(t *testing.T) {
 	defer blockchain.Stop()
 
 	code := common.FromHex(`6060604052600a8060106000396000f360606040526008565b00`)
-	txCost1 := params.WitnessBranchWriteCost*2 + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*3 + params.WitnessChunkReadCost*10 + params.TxGas
-	txCost2 := params.WitnessBranchWriteCost + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*2 + params.WitnessChunkReadCost*10 + params.TxGas
+	txCost1 := params.WitnessBranchWriteCost*2 + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*3 + params.WitnessChunkReadCost*7 + params.TxGas
+	txCost2 := params.WitnessBranchWriteCost + params.WitnessBranchReadCost*2 + params.WitnessChunkWriteCost*2 + params.WitnessChunkReadCost*6 + params.TxGas
 	intrinsic, _ := IntrinsicGas(code, nil, true, true, true)
-	contractCreationCost := intrinsic + 17339
+	contractCreationCost := intrinsic + params.WitnessBranchWriteCost + params.WitnessBranchReadCost*2 + params.WitnessBranchWriteCost*6 + 11739
 	blockGasUsagesExpected := []uint64{
 		txCost1*2 + txCost2,
 		txCost1*2 + txCost2 + contractCreationCost + codeWithExtCodeCopyGas,
@@ -440,7 +440,7 @@ func TestProcessVerkle(t *testing.T) {
 			t.Fatalf("expected block %d to be present in chain", i+1)
 		}
 		if b.GasUsed() != blockGasUsagesExpected[i] {
-			t.Fatalf("expected block txs to use %d, got %d\n", blockGasUsagesExpected[i], b.GasUsed())
+			t.Fatalf("expected block txs for block #%d to use %d, got %d\n", i+1, blockGasUsagesExpected[i], b.GasUsed())
 		}
 	}
 }

@@ -685,8 +685,6 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 		state.Witness().TouchAddressOnReadAndComputeGas(coinbase)
 		coinbase[31] = utils.NonceLeafKey // mark nonce
 		state.Witness().TouchAddressOnReadAndComputeGas(coinbase)
-		coinbase[31] = utils.CodeKeccakLeafKey // mark code keccak
-		state.Witness().TouchAddressOnReadAndComputeGas(coinbase)
 		balance := state.GetBalance(header.Coinbase)
 		coinbase[31] = utils.BalanceLeafKey
 		state.Witness().SetLeafValue(coinbase, balance.Bytes())
