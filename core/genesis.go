@@ -63,6 +63,8 @@ type Genesis struct {
 	GasUsed    uint64      `json:"gasUsed"`
 	ParentHash common.Hash `json:"parentHash"`
 	BaseFee    *big.Int    `json:"baseFeePerGas"`
+
+	Signature []byte `json:"omitempty"`
 }
 
 func ReadGenesis(db ethdb.Database) (*Genesis, error) {
@@ -457,6 +459,7 @@ func (g *Genesis) ToBlock() *types.Block {
 		MixDigest:  g.Mixhash,
 		Coinbase:   g.Coinbase,
 		Root:       root,
+		Signature:  g.Signature,
 	}
 	if g.GasLimit == 0 {
 		head.GasLimit = params.GenesisGasLimit
@@ -587,6 +590,32 @@ func DefaultKilnGenesisBlock() *Genesis {
 		panic(err)
 	}
 	return g
+}
+
+// DefaultSepoliaGenesisBlock returns the Sepolia network genesis block.
+func DefaultGnosisGenesisBlock() *Genesis {
+	return &Genesis{
+		Config:     params.GnosisChainConfig,
+		Nonce:      0,
+		GasLimit:   0x989680,
+		Difficulty: big.NewInt(0x20000),
+		Timestamp:  0,
+		Signature:  make([]byte, 65),
+		Alloc: GenesisAlloc{
+			common.HexToAddress("0x0000000000000000000000000000000000000001"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+			common.HexToAddress("0x0000000000000000000000000000000000000002"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+			common.HexToAddress("0x0000000000000000000000000000000000000003"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+			common.HexToAddress("0x0000000000000000000000000000000000000004"): GenesisAccount{
+				Balance: big.NewInt(1),
+			},
+		},
+	}
 }
 
 // DeveloperGenesisBlock returns the 'geth --dev' genesis block.
