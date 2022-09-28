@@ -149,7 +149,7 @@ func (h *Header) Hash() common.Hash {
 			h.Extra,
 			h.Step,
 			h.Signature,
-			nil,
+			h.BaseFee,
 		})
 	}
 

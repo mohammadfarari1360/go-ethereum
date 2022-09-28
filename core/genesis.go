@@ -435,6 +435,8 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return params.GoerliChainConfig
 	case ghash == params.KilnGenesisHash:
 		return DefaultKilnGenesisBlock().Config
+	case ghash == params.GnosisChainHash:
+		return params.GnosisChainConfig
 	default:
 		return params.AllEthashProtocolChanges
 	}
