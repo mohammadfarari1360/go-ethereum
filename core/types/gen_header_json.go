@@ -29,8 +29,10 @@ func (h Header) MarshalJSON() ([]byte, error) {
 		GasUsed     hexutil.Uint64 `json:"gasUsed"          gencodec:"required"`
 		Time        hexutil.Uint64 `json:"timestamp"        gencodec:"required"`
 		Extra       hexutil.Bytes  `json:"extraData"        gencodec:"required"`
-		MixDigest   common.Hash    `json:"mixHash"`
-		Nonce       BlockNonce     `json:"nonce"`
+		Step        []byte         `json:"step,omitempty" rlp:"-"`
+		Signature   []byte         `json:"signature" rlp:"optional"`
+		MixDigest   common.Hash    `json:"mixHash" rlp:"optional"`
+		Nonce       BlockNonce     `json:"nonce" rlp:"optional"`
 		BaseFee     *hexutil.Big   `json:"baseFeePerGas" rlp:"optional"`
 		Hash        common.Hash    `json:"hash"`
 	}
@@ -48,6 +50,8 @@ func (h Header) MarshalJSON() ([]byte, error) {
 	enc.GasUsed = hexutil.Uint64(h.GasUsed)
 	enc.Time = hexutil.Uint64(h.Time)
 	enc.Extra = h.Extra
+	enc.Step = h.Step
+	enc.Signature = h.Signature
 	enc.MixDigest = h.MixDigest
 	enc.Nonce = h.Nonce
 	enc.BaseFee = (*hexutil.Big)(h.BaseFee)
@@ -71,8 +75,10 @@ func (h *Header) UnmarshalJSON(input []byte) error {
 		GasUsed     *hexutil.Uint64 `json:"gasUsed"          gencodec:"required"`
 		Time        *hexutil.Uint64 `json:"timestamp"        gencodec:"required"`
 		Extra       *hexutil.Bytes  `json:"extraData"        gencodec:"required"`
-		MixDigest   *common.Hash    `json:"mixHash"`
-		Nonce       *BlockNonce     `json:"nonce"`
+		Step        []byte          `json:"step,omitempty" rlp:"-"`
+		Signature   []byte          `json:"signature" rlp:"optional"`
+		MixDigest   *common.Hash    `json:"mixHash" rlp:"optional"`
+		Nonce       *BlockNonce     `json:"nonce" rlp:"optional"`
 		BaseFee     *hexutil.Big    `json:"baseFeePerGas" rlp:"optional"`
 	}
 	var dec Header
@@ -130,6 +136,12 @@ func (h *Header) UnmarshalJSON(input []byte) error {
 		return errors.New("missing required field 'extraData' for Header")
 	}
 	h.Extra = *dec.Extra
+	if dec.Step != nil {
+		h.Step = dec.Step
+	}
+	if dec.Signature != nil {
+		h.Signature = dec.Signature
+	}
 	if dec.MixDigest != nil {
 		h.MixDigest = *dec.MixDigest
 	}

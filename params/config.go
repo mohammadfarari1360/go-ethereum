@@ -267,30 +267,31 @@ var (
 	}
 
 	GnosisChainConfig = &ChainConfig{
-		ChainID:             big.NewInt(100),
-		HomesteadBlock:      big.NewInt(0),
-		DAOForkBlock:        big.NewInt(0),
-		DAOForkSupport:      true,
-		EIP150Block:         big.NewInt(0),
-		EIP150Hash:          common.HexToHash("0x2086799aeebeae135c246c65021c82b4e15a2c451340993aacfd2751886514f0"),
-		EIP155Block:         big.NewInt(0),
-		EIP158Block:         big.NewInt(0),
-		ByzantiumBlock:      big.NewInt(0),
-		ConstantinopleBlock: big.NewInt(1_604_400),
-		PetersburgBlock:     big.NewInt(7_280_000),
-		IstanbulBlock:       big.NewInt(7_298_030),
-		MuirGlacierBlock:    big.NewInt(9_200_000),
-		BerlinBlock:         big.NewInt(16_101_500),
-		LondonBlock:         big.NewInt(19_040_000),
-		ArrowGlacierBlock:   big.NewInt(19_040_000),
-		GrayGlacierBlock:    big.NewInt(19_040_000),
-		// Aura: &AuraCVonfig{
-		// 	Authorities: []common.Address{
-		// 		common.HexToAddress("0xcace5b3c29211740e595850e80478416ee77ca21"),
-		// 	},
-		// 	Difficulty: big.NewInt(131072),
-		// 	Period:     5,
-		// },
+		ChainID:                 big.NewInt(100),
+		HomesteadBlock:          big.NewInt(0),
+		DAOForkBlock:            big.NewInt(0),
+		DAOForkSupport:          true,
+		EIP150Block:             big.NewInt(0),
+		EIP150Hash:              common.HexToHash("0x2086799aeebeae135c246c65021c82b4e15a2c451340993aacfd2751886514f0"),
+		EIP155Block:             big.NewInt(0),
+		EIP158Block:             big.NewInt(0),
+		ByzantiumBlock:          big.NewInt(0),
+		ConstantinopleBlock:     big.NewInt(1_604_400),
+		PetersburgBlock:         big.NewInt(7_280_000),
+		IstanbulBlock:           big.NewInt(7_298_030),
+		MuirGlacierBlock:        big.NewInt(9_200_000),
+		BerlinBlock:             big.NewInt(16_101_500),
+		LondonBlock:             big.NewInt(19_040_000),
+		ArrowGlacierBlock:       big.NewInt(19_040_000),
+		GrayGlacierBlock:        big.NewInt(19_040_000),
+		TerminalTotalDifficulty: big.NewInt(12345678),
+		Aura:                    &AuraConfig{
+			// 	Authorities: []common.Address{
+			// 		common.HexToAddress("0xcace5b3c29211740e595850e80478416ee77ca21"),
+			// 	},
+			// 	Difficulty: big.NewInt(131072),
+			// 	Period:     5,
+		},
 	}
 
 	// AllEthashProtocolChanges contains every protocol change (EIPs) introduced

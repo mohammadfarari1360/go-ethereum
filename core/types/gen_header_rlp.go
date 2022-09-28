@@ -5,6 +5,7 @@
 
 package types
 
+import "github.com/ethereum/go-ethereum/common"
 import "github.com/ethereum/go-ethereum/rlp"
 import "io"
 
@@ -38,10 +39,20 @@ func (obj *Header) EncodeRLP(_w io.Writer) error {
 	w.WriteUint64(obj.GasUsed)
 	w.WriteUint64(obj.Time)
 	w.WriteBytes(obj.Extra)
-	w.WriteBytes(obj.MixDigest[:])
-	w.WriteBytes(obj.Nonce[:])
-	_tmp1 := obj.BaseFee != nil
-	if _tmp1 {
+	_tmp1 := len(obj.Signature) > 0
+	_tmp2 := obj.MixDigest != (common.Hash{})
+	_tmp3 := obj.Nonce != (BlockNonce{})
+	_tmp4 := obj.BaseFee != nil
+	if _tmp1 || _tmp2 || _tmp3 || _tmp4 {
+		w.WriteBytes(obj.Signature)
+	}
+	if _tmp2 || _tmp3 || _tmp4 {
+		w.WriteBytes(obj.MixDigest[:])
+	}
+	if _tmp3 || _tmp4 {
+		w.WriteBytes(obj.Nonce[:])
+	}
+	if _tmp4 {
 		if obj.BaseFee == nil {
 			w.Write(rlp.EmptyString)
 		} else {
