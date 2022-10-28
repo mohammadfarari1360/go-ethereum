@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/gballet/go-verkle"
 )
 
 const (
@@ -1088,7 +1089,39 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	if !params.noTxs {
 		w.fillTransactions(nil, work)
 	}
-	return w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
+	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
+	// Open the pre-tree to prove the pre-state against
+	preTrie, err := work.state.Database().OpenTrie(work.preRoot)
+	if err != nil {
+		return nil, err
+	}
+	if vtr, ok := preTrie.(*trie.VerkleTrie); ok {
+		keys := work.state.Witness().Keys()
+		kvs := work.state.Witness().KeyVals()
+		for _, key := range keys {
+			// XXX workaround - there is a problem in the witness creation
+			// so fix the witness creation as well.
+			v, err := vtr.TryGetWithHashedKey(key)
+			if err != nil {
+				panic(err)
+			}
+			kvs[string(key)] = v
+		}
+		vtr.Hash()
+		var (
+			p *verkle.VerkleProof
+			k verkle.StateDiff
+		)
+
+		if len(work.state.Witness().Keys()) > 0 {
+			p, k, err = vtr.ProveAndSerialize(work.state.Witness().Keys(), kvs)
+			if err != nil {
+				return nil, err
+			}
+		}
+		block.SetVerkleProof(p, k)
+	}
+	return block, nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
@@ -1149,6 +1182,37 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		block, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, env.txs, env.unclelist(), env.receipts)
 		if err != nil {
 			return err
+		}
+
+		// Open the pre-tree to prove the pre-state against
+		preTrie, err := env.state.Database().OpenTrie(env.preRoot)
+		if err != nil {
+			return err
+		}
+		if vtr, ok := preTrie.(*trie.VerkleTrie); ok {
+			keys := env.state.Witness().Keys()
+			kvs := env.state.Witness().KeyVals()
+			for _, key := range keys {
+				// XXX workaround - there is a problem in the witness creation
+				// so fix the witness creation as well.
+				v, err := vtr.TryGetWithHashedKey(key)
+				if err != nil {
+					panic(err)
+				}
+				kvs[string(key)] = v
+			}
+			vtr.Hash()
+			var (
+				p *verkle.VerkleProof
+				k verkle.StateDiff
+			)
+			if len(env.state.Witness().Keys()) > 0 {
+				p, k, err = vtr.ProveAndSerialize(env.state.Witness().Keys(), kvs)
+				if err != nil {
+					return err
+				}
+			}
+			block.SetVerkleProof(p, k)
 		}
 
 		// If we're post merge, just ignore

@@ -66,6 +66,9 @@ func (trie *VerkleTrie) TryGet(addr, key []byte) ([]byte, error) {
 	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(pointEval, key)
 	return trie.root.Get(k, trie.db.diskdb.Get)
 }
+func (trie *VerkleTrie) TryGetWithHashedKey(key []byte) ([]byte, error) {
+	return trie.root.Get(key, trie.db.diskdb.Get)
+}
 
 // GetWithHashedKey returns the value, assuming that the key has already
 // been hashed.
