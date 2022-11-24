@@ -398,7 +398,7 @@ func TestProcessVerkle(t *testing.T) {
 		txCost1*2 + txCost2,
 		txCost1*2 + txCost2 + contractCreationCost + codeWithExtCodeCopyGas,
 	}
-	chain, _ := GenerateVerkleChain(gspec.Config, genesis, ethash.NewFaker(), db, 2, func(i int, gen *BlockGen) {
+	chain, _, proofs, keyvals := GenerateVerkleChain(gspec.Config, genesis, ethash.NewFaker(), db, 2, func(i int, gen *BlockGen) {
 		// TODO need to check that the tx cost provided is the exact amount used (no remaining left-over)
 		tx, _ := types.SignTx(types.NewTransaction(uint64(i)*3, common.Address{byte(i), 2, 3}, big.NewInt(999), txCost1, big.NewInt(875000000), nil), signer, testKey)
 		gen.AddTx(tx)
@@ -424,8 +424,13 @@ func TestProcessVerkle(t *testing.T) {
 	//rlp.Encode(&buf, chain[1])
 	//f.Write(buf.Bytes())
 	//fmt.Printf("root= %x\n", chain[0].Root())
+	// check the proof for the last block
+	err := trie.DeserializeAndVerifyVerkleProof(proofs[1], chain[0].Root().Bytes(), keyvals[1])
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := blockchain.InsertChain(chain)
+	_, err = blockchain.InsertChain(chain)
 	if err != nil {
 		t.Fatalf("block imported with error: %v", err)
 	}
@@ -436,7 +441,7 @@ func TestProcessVerkle(t *testing.T) {
 			t.Fatalf("expected block %d to be present in chain", i+1)
 		}
 		if b.GasUsed() != blockGasUsagesExpected[i] {
-			t.Fatalf("expected block txs to use %d, got %d\n", blockGasUsagesExpected[i], b.GasUsed())
+			t.Fatalf("expected block #%d txs to use %d, got %d\n", i+1, blockGasUsagesExpected[i], b.GasUsed())
 		}
 	}
 }

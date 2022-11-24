@@ -17,8 +17,6 @@
 package types
 
 import (
-	"encoding/binary"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/utils"
@@ -431,8 +429,6 @@ func (aw *AccessWitness) TouchTxOriginAndComputeGas(originAddr []byte) uint64 {
 	ckkey[31] = utils.CodeKeccakLeafKey
 
 	gas += aw.TouchAddressOnReadAndComputeGas(versionkey)
-	gas += aw.TouchAddressOnReadAndComputeGas(cskey[:])
-	gas += aw.TouchAddressOnReadAndComputeGas(ckkey[:])
 	gas += aw.TouchAddressOnWriteAndComputeGas(noncekey[:])
 	gas += aw.TouchAddressOnWriteAndComputeGas(balancekey[:])
 
@@ -486,9 +482,6 @@ func (aw *AccessWitness) SetTxOriginTouchedLeaves(originAddr, originBalance, ori
 	aw.SetLeafValue(versionkey, version[:])
 	aw.SetLeafValue(balancekey[:], originBalance)
 	aw.SetLeafValue(noncekey[:], originNonce)
-	var cs [32]byte
-	binary.LittleEndian.PutUint64(cs[:8], uint64(codeSize))
-	aw.SetLeafValue(cskey[:], cs[:])
 }
 
 func (aw *AccessWitness) SetTxExistingTouchedLeaves(targetAddr, targetBalance, targetNonce, targetCodeSize, targetCodeHash []byte) {

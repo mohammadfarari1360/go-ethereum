@@ -525,10 +525,6 @@ func (s *stateObject) Code(db Database) []byte {
 		return s.code
 	}
 	if bytes.Equal(s.CodeHash(), emptyCodeHash) {
-		if s.db.GetTrie().IsVerkle() {
-			// Mark the code size and code hash as empty
-			s.db.witness.SetObjectCodeTouchedLeaves(s.address.Bytes(), nil, nil)
-		}
 		return nil
 	}
 	code, err := db.ContractCode(s.addrHash, common.BytesToHash(s.CodeHash()))
@@ -553,8 +549,6 @@ func (s *stateObject) CodeSize(db Database) int {
 	}
 	if bytes.Equal(s.CodeHash(), emptyCodeHash) {
 		if s.db.trie.IsVerkle() {
-			var sz [32]byte
-			s.db.witness.SetLeafValuesMessageCall(s.address.Bytes(), sz[:])
 		}
 		return 0
 	}
