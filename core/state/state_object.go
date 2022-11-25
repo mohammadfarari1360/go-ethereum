@@ -272,20 +272,6 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		value.SetBytes(content)
 	}
 
-	// Capture the initial value of the location in the verkle proof witness
-	if s.db.GetTrie().IsVerkle() {
-		if err != nil {
-			return common.Hash{}
-		}
-		loc := new(uint256.Int).SetBytes(key[:])
-		index := trieUtils.GetTreeKeyStorageSlotWithEvaluatedAddress(s.pointEval, loc)
-		if len(enc) > 0 {
-			s.db.Witness().SetLeafValue(index, value.Bytes())
-		} else {
-			s.db.Witness().SetLeafValue(index, nil)
-		}
-	}
-
 	s.originStorage[key] = value
 	return value
 }
@@ -555,11 +541,6 @@ func (s *stateObject) CodeSize(db Database) int {
 	size, err := db.ContractCodeSize(s.addrHash, common.BytesToHash(s.CodeHash()))
 	if err != nil {
 		s.setError(fmt.Errorf("can't load code size %x: %v", s.CodeHash(), err))
-	}
-	if s.db.trie.IsVerkle() {
-		var sz [32]byte
-		binary.LittleEndian.PutUint64(sz[:8], uint64(size))
-		s.db.witness.SetLeafValuesMessageCall(s.address.Bytes(), sz[:])
 	}
 	return size
 }
