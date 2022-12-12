@@ -332,10 +332,7 @@ func DeserializeAndVerifyVerkleProof(serialized []byte, rootC *verkle.Point, key
 	if err != nil {
 		return fmt.Errorf("could not deserialize proof: %w", err)
 	}
-	cfg, err := verkle.GetConfig()
-	if err != nil {
-		return fmt.Errorf("could not get configuration %w", err)
-	}
+	cfg := verkle.GetConfig()
 	if !verkle.VerifyVerkleProof(proof, cis, indices, yis, cfg) {
 		return errInvalidProof
 	}
