@@ -429,7 +429,12 @@ func (s *stateObject) updateTrie(db Database) Trie {
 	if len(s.pendingStorage) > 0 {
 		s.pendingStorage = make(Storage)
 	}
-	return tr
+	// returns s.trie instead of tr, because in
+	// a verkle context, the trie should not be
+	// committed to until the very end, as it's
+	// a single tree. This is a hack and it can
+	// be properly fixed by a later refactoring
+	return s.trie
 }
 
 // UpdateRoot sets the trie root to the current root hash of
