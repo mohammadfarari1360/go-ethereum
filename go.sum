@@ -147,6 +147,8 @@ github.com/gballet/go-verkle v0.0.0-20221129125207-513116151b28 h1:UbB7D2R1OQCkN
 github.com/gballet/go-verkle v0.0.0-20221129125207-513116151b28/go.mod h1:DMDd04jjQgdynaAwbEgiRERIGpC8fDjx0+y06an7Psg=
 github.com/gballet/go-verkle v0.0.0-20221221094055-a8ace4c4a612 h1:ZbVUa82SZVD22vVQMIfMyMvlsmcS/dYgdvCJ5ujbMTo=
 github.com/gballet/go-verkle v0.0.0-20221221094055-a8ace4c4a612/go.mod h1:DMDd04jjQgdynaAwbEgiRERIGpC8fDjx0+y06an7Psg=
+github.com/gballet/go-verkle v0.0.0-20221222074817-16969a23d28d h1:1jKW93wwuA7YzA1g+6f/By1UVobdd0RHK0fNLHGUKnM=
+github.com/gballet/go-verkle v0.0.0-20221222074817-16969a23d28d/go.mod h1:DMDd04jjQgdynaAwbEgiRERIGpC8fDjx0+y06an7Psg=
 github.com/getkin/kin-openapi v0.53.0/go.mod h1:7Yn5whZr5kJi6t+kShccXS8ae1APpYTW6yheSwk8Yi4=
 github.com/getkin/kin-openapi v0.61.0/go.mod h1:7Yn5whZr5kJi6t+kShccXS8ae1APpYTW6yheSwk8Yi4=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
