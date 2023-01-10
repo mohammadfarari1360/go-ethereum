@@ -94,8 +94,8 @@ type Header struct {
 		Random common.Hash `json:"random" rlp:"optional"`
 	*/
 
-	VerkleProof   []byte                `json:"verkleProof" rlp:"optional"`
-	VerkleKeyVals []verkle.KeyValuePair `json:"verkleKeyVals" rlp:"optional"`
+	VerkleProof   []byte                `json:"verkleProof" rlp:"-"`
+	VerkleKeyVals []verkle.KeyValuePair `json:"verkleKeyVals" rlp:"-"`
 }
 
 // field type overrides for gencodec
@@ -255,6 +255,21 @@ func CopyHeader(h *Header) *Header {
 	if len(h.Extra) > 0 {
 		cpy.Extra = make([]byte, len(h.Extra))
 		copy(cpy.Extra, h.Extra)
+	}
+	if len(h.VerkleProof) > 0 {
+		cpy.VerkleProof = make([]byte, len(h.VerkleProof))
+		copy(cpy.VerkleProof, h.VerkleProof)
+	}
+	if len(h.VerkleKeyVals) > 0 {
+		cpy.VerkleKeyVals = make([]verkle.KeyValuePair, len(h.VerkleKeyVals))
+		for i := range h.VerkleKeyVals {
+			cpy.VerkleKeyVals[i].Key = make([]byte, 32)
+			copy(cpy.VerkleKeyVals[i].Key, h.VerkleKeyVals[i].Key)
+			if len(h.VerkleKeyVals[i].Value) != 0 {
+				cpy.VerkleKeyVals[i].Value = make([]byte, 32)
+				copy(cpy.VerkleKeyVals[i].Value, h.VerkleKeyVals[i].Value)
+			}
+		}
 	}
 	return &cpy
 }
