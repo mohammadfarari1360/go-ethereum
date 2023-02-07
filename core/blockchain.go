@@ -1613,7 +1613,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		}
 		// perform the verkle fork if this is the fork block
 		if block.NumberU64() == 230081 {
-			proot := common.HexToHash("0x326321001e813a6882f81c58aac2d6c165792e640480a09d5b48948d52578d41")
+			proot := common.HexToHash("0x57c783c15b3e79dc2eb0d6a5d7d780936a2da4ce8ef842d64344c65dcd3a986e")
 			bc.SetVerkleFork(parent.Root, proot)
 		}
 		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
