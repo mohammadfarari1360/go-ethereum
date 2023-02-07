@@ -280,7 +280,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		var mem runtime.MemStats
 		runtime.ReadMemStats(&mem)
-		if mem.Alloc > 25*1024*1024 {
+		if mem.Alloc > 25*1024*1024*1024 {
 			fmt.Println("Memory usage exceeded threshold, calling mitigation function")
 			vRoot.FlushAtDepth(2, saveverkle)
 		}
