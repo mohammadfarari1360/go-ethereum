@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/gballet/go-verkle"
 )
 
 // Proof-of-stake protocol constants.
@@ -333,6 +334,47 @@ func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.
 	// The block reward is no longer handled here. It's done by the
 	// external consensus engine.
 	header.Root = state.IntermediateRoot(true)
+
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	// Open the pre-tree to prove the pre-state against
+	preTrie, err := state.Database().OpenTrie(parent.Root)
+	if err != nil {
+		panic(err)
+	}
+	if vtr, ok := preTrie.(*trie.VerkleTrie); ok {
+		fmt.Println("making proof")
+		keys := state.Witness().Keys()
+		kvs := state.Witness().KeyVals()
+		for _, key := range keys {
+			// XXX workaround - there is a problem in the witness creation
+			// so fix the witness creation as well.
+			v, err := vtr.TryGet(key)
+			if err != nil {
+				panic(err)
+			}
+			kvs[string(key)] = v
+		}
+		vtr.Hash()
+		var (
+			p []byte
+			k []verkle.KeyValuePair
+		)
+		if len(state.Witness().Keys()) > 0 {
+			p, k, err = vtr.ProveAndSerialize(state.Witness().Keys(), kvs)
+			if err != nil {
+				panic(err)
+			}
+		}
+		header.VerkleProof = p
+		header.VerkleKeyVals = k
+	}
+	fmt.Println("verifying proof", len(header.VerkleProof), len(header.VerkleKeyVals), header.Number, header.TxHash)
+	if len(header.VerkleProof) > 0 {
+		if err := trie.DeserializeAndVerifyVerkleProof(header.VerkleProof, parent.Root.Bytes(), header.VerkleKeyVals); err != nil {
+			panic(err)
+		}
+	}
+
 }
 
 // FinalizeAndAssemble implements consensus.Engine, setting the final state and
