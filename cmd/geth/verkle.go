@@ -181,7 +181,7 @@ func convertToVerkle(ctx *cli.Context) error {
 			return fmt.Errorf("could not find preimage for address %x %v %v", accIt.Hash(), acc, accIt.Error())
 		}
 		addrPoint := tutils.EvaluateAddressPoint(addr)
-		stem := tutils.GetTreeKeyVersion(addr) // FIXME redundant with previous line
+		stem := tutils.GetTreeKeyVersionWithEvaluatedAddress(addrPoint)
 
 		// Store the account code if present
 		if !bytes.Equal(acc.CodeHash, emptyCode) {
@@ -258,6 +258,22 @@ func convertToVerkle(ctx *cli.Context) error {
 				// Store value in group
 				values[slotkey[31]] = safeValue[:]
 				translatedStorage[string(slotkey[:31])] = values
+
+				// Dump the stuff to disk if we ran out of space
+				var mem runtime.MemStats
+				runtime.ReadMemStats(&mem)
+				if mem.Alloc > 25*1024*1024*1024 {
+					fmt.Println("Memory usage exceeded threshold, calling mitigation function")
+					for s, vs := range translatedStorage {
+						var k [31]byte
+						copy(k[:], []byte(s))
+						// reminder that InsertStem will merge leaves
+						// if they exist.
+						vRoot.InsertStem(k[:31], vs, chaindb.Get)
+					}
+					translatedStorage = make(map[string][][]byte)
+					vRoot.FlushAtDepth(2, saveverkle)
+				}
 			}
 			for s, vs := range translatedStorage {
 				var k [31]byte
@@ -280,7 +296,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		var mem runtime.MemStats
 		runtime.ReadMemStats(&mem)
-		if mem.Alloc > 25*1024*1024 {
+		if mem.Alloc > 25*1024*1024*1024 {
 			fmt.Println("Memory usage exceeded threshold, calling mitigation function")
 			vRoot.FlushAtDepth(2, saveverkle)
 		}
