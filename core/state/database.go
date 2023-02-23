@@ -138,11 +138,13 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 	return &ForkingDB{
 		cachingDB: &cachingDB{
 			db:            trie.NewDatabaseWithConfig(db, config),
+			disk:          db,
 			codeSizeCache: csc,
 			codeCache:     fastcache.New(codeCacheSize),
 		},
 		VerkleDB: &VerkleDB{
 			db:            trie.NewDatabaseWithConfig(db, config),
+			diskdb:        db,
 			codeSizeCache: csc,
 			codeCache:     fastcache.New(codeCacheSize),
 		},
