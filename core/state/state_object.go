@@ -231,8 +231,11 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 	}
 	// If the snapshot is unavailable or reading from it fails, load from the database.
 	if s.db.snap == nil || err != nil {
+		var tr Trie
 		if s.db.GetTrie().IsVerkle() {
-			panic("verkle trees use the snapshot")
+			tr = s.db.GetTrie()
+		} else {
+			tr = s.getTrie(db)
 		}
 		start := time.Now()
 		enc, err = s.getTrie(db).TryGet(key.Bytes())
