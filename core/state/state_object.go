@@ -210,8 +210,9 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 	}
 	// If no live objects are available, attempt to use snapshots
 	var (
-		enc []byte
-		err error
+		enc   []byte
+		err   error
+		value common.Hash
 	)
 	if s.db.snap != nil {
 		// If the object was destructed in *this* block (and potentially resurrected),
@@ -240,7 +241,9 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		start := time.Now()
 		if s.db.GetTrie().IsVerkle() {
 			key := trieUtils.GetTreeKeyStorageSlot(s.Address().Bytes(), uint256.NewInt(0).SetBytes(key.Bytes()))
-			enc, err = tr.TryGet(key)
+			var v []byte
+			v, err = tr.TryGet(key)
+			copy(value[:], v)
 		} else {
 			enc, err = tr.TryGet(key.Bytes())
 		}
@@ -252,7 +255,6 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			return common.Hash{}
 		}
 	}
-	var value common.Hash
 	if len(enc) > 0 {
 		_, content, _, err := rlp.Split(enc)
 		if err != nil {
