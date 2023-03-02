@@ -238,7 +238,12 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			tr = s.getTrie(db)
 		}
 		start := time.Now()
-		enc, err = s.getTrie(db).TryGet(key.Bytes())
+		if s.db.GetTrie().IsVerkle() {
+			key := trieUtils.GetTreeKeyStorageSlot(s.Address().Bytes(), uint256.NewInt(0).SetBytes(key.Bytes()))
+			enc, err = tr.TryGet(key)
+		} else {
+			enc, err = tr.TryGet(key.Bytes())
+		}
 		if metrics.EnabledExpensive {
 			s.db.StorageReads += time.Since(start)
 		}
