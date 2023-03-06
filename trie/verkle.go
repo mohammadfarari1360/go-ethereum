@@ -183,35 +183,36 @@ func (trie *VerkleTrie) TryUpdate(key, value []byte) error {
 }
 
 func (t *VerkleTrie) TryDeleteAccount(key []byte) error {
-	var (
-		err                                error
-		balancekey, cskey, ckkey, noncekey [32]byte
-	)
+	// var (
+	// 	err                                error
+	// 	balancekey, cskey, ckkey, noncekey [32]byte
+	// )
 
-	// Only evaluate the polynomial once
-	// TODO InsertStem with overwrite of values 0
-	versionkey := utils.GetTreeKeyVersion(key[:])
-	copy(balancekey[:], versionkey)
-	balancekey[31] = utils.BalanceLeafKey
-	copy(noncekey[:], versionkey)
-	noncekey[31] = utils.NonceLeafKey
-	copy(cskey[:], versionkey)
-	cskey[31] = utils.CodeSizeLeafKey
-	copy(ckkey[:], versionkey)
-	ckkey[31] = utils.CodeKeccakLeafKey
+	// // Only evaluate the polynomial once
+	// // TODO InsertStem with overwrite of values 0
+	// versionkey := utils.GetTreeKeyVersion(key[:])
+	// copy(balancekey[:], versionkey)
+	// balancekey[31] = utils.BalanceLeafKey
+	// copy(noncekey[:], versionkey)
+	// noncekey[31] = utils.NonceLeafKey
+	// copy(cskey[:], versionkey)
+	// cskey[31] = utils.CodeSizeLeafKey
+	// copy(ckkey[:], versionkey)
+	// ckkey[31] = utils.CodeKeccakLeafKey
 
-	if err = t.TryDelete(versionkey); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if err = t.TryDelete(noncekey[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if err = t.TryDelete(balancekey[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	if err = t.TryDelete(ckkey[:]); err != nil {
-		return fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
+	// if err = t.TryDelete(versionkey); err != nil {
+	// 	panic("pourquoi est-ce detruit")
+	// 	return fmt.Errorf("TryDeleteAccount (addr=%x, key=%x) error: %w", key, versionkey, err)
+	// }
+	// if err = t.TryDelete(noncekey[:]); err != nil {
+	// 	return fmt.Errorf("TryDeleteAccount (addr=%x, key=%x) error: %w", key, noncekey, err)
+	// }
+	// if err = t.TryDelete(balancekey[:]); err != nil {
+	// 	return fmt.Errorf("TryDeleteAccount (addr=%x, key=%x) error: %w", key, balancekey, err)
+	// }
+	// if err = t.TryDelete(ckkey[:]); err != nil {
+	// 	return fmt.Errorf("TryDeleteAccount (addr=%x, key=%x) error: %w", key, ckkey, err)
+	// }
 	// TODO figure out if the code size needs to be updated, too
 
 	return nil
