@@ -102,7 +102,6 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 	ck, err := t.TryGet(ckkey[:])
 	if err != nil {
 		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-
 	}
 	acc.CodeHash = ck
 
@@ -156,7 +155,6 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 }
 
 func (trie *VerkleTrie) TryUpdateStem(key []byte, values [][]byte) {
-
 	switch root := trie.root.(type) {
 	case *verkle.StatelessNode:
 		root.InsertAtStem(key, values, func(h []byte) ([]byte, error) {
@@ -239,45 +237,31 @@ func nodeToDBKey(n verkle.VerkleNode) []byte {
 // Commit writes all nodes to the trie's memory database, tracking the internal
 // and external (for account tries) references.
 func (trie *VerkleTrie) Commit(onleaf LeafCallback) (common.Hash, int, error) {
-	flush := make(chan verkle.VerkleNode)
-	flusher := func(n verkle.VerkleNode) {
+	root, ok := trie.root.(*verkle.InternalNode)
+	if !ok {
+		return common.Hash{}, 0, errors.New("unexpected root node type")
+	}
+	nodes, err := root.BatchSerialize()
+	if err != nil {
+		return common.Hash{}, 0, fmt.Errorf("serializing tree nodes: %s", err)
+	}
+
+	for _, node := range nodes {
 		if onleaf != nil {
-			if leaf, isLeaf := n.(*verkle.LeafNode); isLeaf {
-				for i := 0; i < verkle.NodeWidth; i++ {
-					if leaf.Value(i) != nil {
-						comm := n.Commitment().Bytes()
-						onleaf(nil, nil, leaf.Value(i), common.BytesToHash(comm[:]))
+			if leaf, isLeaf := node.Node.(*verkle.LeafNode); isLeaf {
+				for j := 0; j < verkle.NodeWidth; j++ {
+					if leaf.Value(j) != nil {
+						onleaf(nil, nil, leaf.Value(j), common.BytesToHash(node.CommitmentBytes[:]))
 					}
 				}
 			}
 		}
-		flush <- n
-	}
-	go func() {
-		switch root := trie.root.(type) {
-		case *verkle.StatelessNode:
-			root.Flush(flusher)
-		case *verkle.InternalNode:
-			root.Flush(flusher)
-		default:
-			log.Crit("root was not flushed")
-		}
-		close(flush)
-	}()
-	var commitCount int
-	for n := range flush {
-		commitCount += 1
-		value, err := n.Serialize()
-		if err != nil {
-			panic(err)
-		}
-
-		if err := trie.db.DiskDB().Put(nodeToDBKey(n), value); err != nil {
-			return common.Hash{}, commitCount, err
+		if err := trie.db.DiskDB().Put(node.CommitmentBytes[:], node.SerializedBytes); err != nil {
+			return common.Hash{}, 0, fmt.Errorf("put node to disk: %s", err)
 		}
 	}
 
-	return trie.Hash(), commitCount, nil
+	return nodes[0].CommitmentBytes, len(nodes), nil
 }
 
 // NodeIterator returns an iterator that returns nodes of the trie. Iteration
@@ -303,6 +287,7 @@ func (trie *VerkleTrie) Copy(db *Database) *VerkleTrie {
 		db:   db,
 	}
 }
+
 func (trie *VerkleTrie) IsVerkle() bool {
 	return true
 }
