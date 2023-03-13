@@ -64,49 +64,32 @@ func (trie *VerkleTrie) TryGet(key []byte) ([]byte, error) {
 }
 
 func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
-	var (
-		err                                error
-		balancekey, cskey, ckkey, noncekey [32]byte
-		acc                                *types.StateAccount = &types.StateAccount{}
-	)
+	var acc *types.StateAccount = &types.StateAccount{}
 
 	// Only evaluate the polynomial once
-	// TODO implement GetStem as well, so that the trie is only traversed once
-	// it's not as bad because the commitments aren't updated, but it could, in
-	// theory, have to deserialize some more nodes (if there is some sort of cache
-	// dump)
 	versionkey := utils.GetTreeKeyVersion(key[:])
-	copy(balancekey[:], versionkey)
-	balancekey[31] = utils.BalanceLeafKey
-	copy(noncekey[:], versionkey)
-	noncekey[31] = utils.NonceLeafKey
-	copy(cskey[:], versionkey)
-	cskey[31] = utils.CodeSizeLeafKey
-	copy(ckkey[:], versionkey)
-	ckkey[31] = utils.CodeKeccakLeafKey
 
-	nonce, err := t.TryGet(noncekey[:])
+	resolver := func(hash []byte) ([]byte, error) {
+		return t.db.diskdb.Get(hash)
+	}
+	values, err := t.root.(*verkle.InternalNode).GetStem(versionkey[:31], resolver)
 	if err != nil {
 		return nil, fmt.Errorf("TryGetAccount (%x) error: %v", key, err)
 	}
-	if len(nonce) > 0 {
-		acc.Nonce = binary.LittleEndian.Uint64(nonce)
+	if values == nil {
+		return nil, nil
 	}
-	balance, err := t.TryGet(balancekey[:])
-	if err != nil {
-		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
+	if len(values[utils.NonceLeafKey]) > 0 {
+		acc.Nonce = binary.LittleEndian.Uint64(values[utils.NonceLeafKey])
 	}
+	balance := values[utils.BalanceLeafKey]
 	if len(balance) > 0 {
 		for i := 0; i < len(balance)/2; i++ {
 			balance[len(balance)-i-1], balance[i] = balance[i], balance[len(balance)-i-1]
 		}
 	}
 	acc.Balance = new(big.Int).SetBytes(balance[:])
-	ck, err := t.TryGet(ckkey[:])
-	if err != nil {
-		return nil, fmt.Errorf("updateStateObject (%x) error: %v", key, err)
-	}
-	acc.CodeHash = ck
+	acc.CodeHash = values[utils.CodeKeccakLeafKey]
 
 	// TODO fix the code size as well
 
