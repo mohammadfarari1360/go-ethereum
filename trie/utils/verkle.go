@@ -41,6 +41,18 @@ var (
 	getTreePolyIndex0Point *verkle.Point
 )
 
+type PointCache map[string]*verkle.Point
+
+func (pc PointCache) GetTreeKeyHeader(addr []byte) *verkle.Point {
+	if point, ok := pc[string(addr)]; ok {
+		return point
+	}
+
+	point := EvaluateAddressPoint(addr)
+	pc[string(addr)] = point
+	return point
+}
+
 func init() {
 	// The byte array is the Marshalled output of the point computed as such:
 	//cfg, _ := verkle.GetConfig()

@@ -28,23 +28,26 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
+	"github.com/holiman/uint256"
 )
 
 // VerkleTrie is a wrapper around VerkleNode that implements the trie.Trie
 // interface so that Verkle trees can be reused verbatim.
 type VerkleTrie struct {
-	root verkle.VerkleNode
-	db   *Database
+	root       verkle.VerkleNode
+	db         *Database
+	pointCache *utils.PointCache
 }
 
 func (vt *VerkleTrie) ToDot() string {
 	return verkle.ToDot(vt.root)
 }
 
-func NewVerkleTrie(root verkle.VerkleNode, db *Database) *VerkleTrie {
+func NewVerkleTrie(root verkle.VerkleNode, db *Database, pointCache *utils.PointCache) *VerkleTrie {
 	return &VerkleTrie{
-		root: root,
-		db:   db,
+		root:       root,
+		db:         db,
+		pointCache: pointCache,
 	}
 }
 
@@ -175,9 +178,10 @@ func (trie *VerkleTrie) TryUpdateStem(key []byte, values [][]byte) error {
 // by the caller while they are stored in the trie. If a node was not found in the
 // database, a trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryUpdate(key, value []byte) error {
+	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(trie.pointCache.GetTreeKeyHeader(key), new(uint256.Int).SetBytes(key[:]))
 	var v [32]byte
 	copy(v[:], value[:])
-	return trie.root.Insert(key, v[:], func(h []byte) ([]byte, error) {
+	return trie.root.Insert(k, v[:], func(h []byte) ([]byte, error) {
 		return trie.db.diskdb.Get(h)
 	})
 }

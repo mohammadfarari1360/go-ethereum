@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
 	lru "github.com/hashicorp/golang-lru"
 )
@@ -141,6 +142,7 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 			diskdb:        db,
 			codeSizeCache: csc,
 			codeCache:     fastcache.New(codeCacheSize),
+			addrToPoint:   make(utils.PointCache),
 		}
 	}
 	return &cachingDB{
@@ -241,12 +243,20 @@ type VerkleDB struct {
 	diskdb        ethdb.KeyValueStore
 	codeSizeCache *lru.Cache
 	codeCache     *fastcache.Cache
+
+	// Caches all the points that correspond to an address,
+	// so they are not recalculated.
+	addrToPoint utils.PointCache
+}
+
+func (db *VerkleDB) GetTreeKeyHeader(addr []byte) *verkle.Point {
+	return db.addrToPoint.GetTreeKeyHeader(addr)
 }
 
 // OpenTrie opens the main account trie.
 func (db *VerkleDB) OpenTrie(root common.Hash) (Trie, error) {
 	if root == (common.Hash{}) || root == emptyRoot {
-		return trie.NewVerkleTrie(verkle.New(), db.db), nil
+		return trie.NewVerkleTrie(verkle.New(), db.db, &db.addrToPoint), nil
 	}
 	payload, err := db.DiskDB().Get(root[:])
 	if err != nil {
@@ -257,7 +267,7 @@ func (db *VerkleDB) OpenTrie(root common.Hash) (Trie, error) {
 	if err != nil {
 		panic(err)
 	}
-	return trie.NewVerkleTrie(r, db.db), err
+	return trie.NewVerkleTrie(r, db.db, &db.addrToPoint), err
 }
 
 // OpenStorageTrie opens the storage trie of an account.
