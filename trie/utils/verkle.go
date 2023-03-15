@@ -53,6 +53,12 @@ func (pc PointCache) GetTreeKeyHeader(addr []byte) *verkle.Point {
 	return point
 }
 
+func (pc PointCache) GetTreeKeyVersionCached(addr []byte) []byte {
+	p := pc.GetTreeKeyHeader(addr)
+	v := PointToHash(p, VersionLeafKey)
+	return v[:]
+}
+
 func init() {
 	// The byte array is the Marshalled output of the point computed as such:
 	//cfg, _ := verkle.GetConfig()

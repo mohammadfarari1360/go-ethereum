@@ -251,9 +251,7 @@ func (aw *AccessWitness) Copy() *AccessWitness {
 }
 
 func (aw *AccessWitness) GetTreeKeyVersionCached(addr []byte) []byte {
-	p := aw.statedb.db.(*VerkleDB).GetTreeKeyHeader(addr)
-	v := utils.PointToHash(p, utils.VersionLeafKey)
-	return v[:]
+	return aw.statedb.db.(*VerkleDB).addrToPoint.GetTreeKeyVersionCached(addr)
 }
 
 func (aw *AccessWitness) TouchAndChargeProofOfAbsence(addr []byte) uint64 {

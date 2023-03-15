@@ -78,7 +78,7 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 	// it's not as bad because the commitments aren't updated, but it could, in
 	// theory, have to deserialize some more nodes (if there is some sort of cache
 	// dump)
-	versionkey := utils.GetTreeKeyVersion(key[:])
+	versionkey := t.pointCache.GetTreeKeyVersionCached(key)
 	copy(balancekey[:], versionkey)
 	balancekey[31] = utils.BalanceLeafKey
 	copy(noncekey[:], versionkey)
@@ -123,7 +123,7 @@ func (t *VerkleTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 		err            error
 		nonce, balance [32]byte
 		values         = make([][]byte, verkle.NodeWidth)
-		stem           = utils.GetTreeKeyVersion(key[:])
+		stem           = t.pointCache.GetTreeKeyVersionCached(key[:])
 	)
 
 	// Only evaluate the polynomial once
@@ -194,7 +194,7 @@ func (t *VerkleTrie) TryDeleteAccount(key []byte) error {
 
 	// Only evaluate the polynomial once
 	// TODO InsertStem with overwrite of values 0
-	versionkey := utils.GetTreeKeyVersion(key[:])
+	versionkey := t.pointCache.GetTreeKeyVersionCached(key)
 	copy(balancekey[:], versionkey)
 	balancekey[31] = utils.BalanceLeafKey
 	copy(noncekey[:], versionkey)
