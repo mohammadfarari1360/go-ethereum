@@ -142,7 +142,7 @@ func convertToVerkle(ctx *cli.Context) error {
 		}
 	}
 
-	snaptree, err := snapshot.New(snapshot.Config{256, false, false, false, false}, chaindb, trie.NewDatabase(chaindb), root)
+	snaptree, err := snapshot.New(snapshot.Config{CacheSize: 256}, chaindb, trie.NewDatabase(chaindb), root)
 	if err != nil {
 		return err
 	}
