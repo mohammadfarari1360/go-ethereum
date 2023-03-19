@@ -29,8 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	trieUtils "github.com/ethereum/go-ethereum/trie/utils"
-	"github.com/holiman/uint256"
 )
 
 var emptyCodeHash = crypto.Keccak256(nil)
@@ -227,7 +225,7 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			panic("verkle trees use the snapshot")
 		}
 		start := time.Now()
-		enc, err = s.getTrie(db).TryGet(key.Bytes())
+		enc, err = s.getTrie(db).TryGet(s.address[:], key.Bytes())
 		if metrics.EnabledExpensive {
 			s.db.StorageReads += time.Since(start)
 		}
@@ -343,22 +341,16 @@ func (s *stateObject) updateTrie(db Database) Trie {
 
 		var v []byte
 		if (value == common.Hash{}) {
-			if tr.IsVerkle() {
-				k := trieUtils.GetTreeKeyStorageSlotWithEvaluatedAddress(s.db.db.(*VerkleDB).GetTreeKeyHeader(s.address[:]), new(uint256.Int).SetBytes(key[:]))
-				s.setError(tr.TryDelete(k))
-				//s.db.db.TrieDB().DiskDB().Delete(append(s.address[:], key[:]...))
-			} else {
-				s.setError(tr.TryDelete(key[:]))
-			}
+			s.setError(tr.TryDelete(s.address[:], key[:]))
 			s.db.StorageDeleted += 1
 		} else {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
 			if !tr.IsVerkle() {
-				s.setError(tr.TryUpdate(key[:], v))
+				s.setError(tr.TryUpdate(s.address[:], key[:], v))
 			} else {
 				// Update the trie, with v as a value
-				s.setError(tr.TryUpdate(key[:], value[:]))
+				s.setError(tr.TryUpdate(s.address[:], key[:], value[:]))
 			}
 			s.db.StorageUpdated += 1
 		}
