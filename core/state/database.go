@@ -142,7 +142,7 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 			diskdb:        db,
 			codeSizeCache: csc,
 			codeCache:     fastcache.New(codeCacheSize),
-			addrToPoint:   make(utils.PointCache),
+			addrToPoint:   utils.NewPointCache(),
 		}
 	}
 	return &cachingDB{
@@ -246,7 +246,7 @@ type VerkleDB struct {
 
 	// Caches all the points that correspond to an address,
 	// so they are not recalculated.
-	addrToPoint utils.PointCache
+	addrToPoint *utils.PointCache
 }
 
 func (db *VerkleDB) GetTreeKeyHeader(addr []byte) *verkle.Point {
@@ -256,7 +256,7 @@ func (db *VerkleDB) GetTreeKeyHeader(addr []byte) *verkle.Point {
 // OpenTrie opens the main account trie.
 func (db *VerkleDB) OpenTrie(root common.Hash) (Trie, error) {
 	if root == (common.Hash{}) || root == emptyRoot {
-		return trie.NewVerkleTrie(verkle.New(), db.db, &db.addrToPoint), nil
+		return trie.NewVerkleTrie(verkle.New(), db.db, db.addrToPoint), nil
 	}
 	payload, err := db.DiskDB().Get(root[:])
 	if err != nil {
@@ -267,7 +267,7 @@ func (db *VerkleDB) OpenTrie(root common.Hash) (Trie, error) {
 	if err != nil {
 		panic(err)
 	}
-	return trie.NewVerkleTrie(r, db.db, &db.addrToPoint), err
+	return trie.NewVerkleTrie(r, db.db, db.addrToPoint), err
 }
 
 // OpenStorageTrie opens the storage trie of an account.
