@@ -91,10 +91,11 @@ func (t *VerkleTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
 	if len(values[utils.NonceLeafKey]) > 0 {
 		acc.Nonce = binary.LittleEndian.Uint64(values[utils.NonceLeafKey])
 	}
-	if acc.Nonce == 0 && len(values) > 10 && len(values[10]) > 0 {
-		// WORKAROUND: detect if this account has been deleted.
-		// It won't work very well but let's see if it gets the
-		// replay covered. Ideally, we need to compare to the empty hash.
+	if acc.Nonce == 0 && len(values) > 10 && len(values[10]) > 0 && bytes.Equal(values[4], zero[:]) {
+		// WORKAROUND: detect if this account has been deleted: if the
+		// 10th entry is 0, it means that the account has been deleted
+		// at least once, and if the code keccak is also zero, then it
+		// means that the account is currently deleted.
 		return nil, nil
 	}
 	var balance [32]byte
