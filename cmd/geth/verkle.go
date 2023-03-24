@@ -22,8 +22,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -84,6 +86,28 @@ This command takes a root commitment and attempts to rebuild the tree.
 geth verkle dump <state-root> <key 1> [<key 2> ...]
 This command will produce a dot file representing the tree, rooted at <root>.
 in which key1, key2, ... are expanded.
+ `,
+			},
+			{
+				Name:      "dump-keys",
+				Usage:     "Dump the converted keys of a verkle tree to a series of flat binary files",
+				ArgsUsage: "<root>",
+				Action:    dumpKeys,
+				Flags:     flags.Merge(utils.NetworkFlags, utils.DatabasePathFlags),
+				Description: `
+geth verkle dump-keys
+Dump all converted (key, value) tuples in binary files, for later processing by sort-files.
+ `,
+			},
+			{
+				Name:      "sort-keys",
+				Usage:     "Dump the converted keys of a verkle tree to a series of flat binary files",
+				ArgsUsage: "<root>",
+				Action:    sortKeys,
+				Flags:     flags.Merge(utils.NetworkFlags, utils.DatabasePathFlags),
+				Description: `
+geth verkle dump-keys
+Dump all converted (key, value) tuples in binary files, for later processing by sort-files.
  `,
 			},
 		},
@@ -453,6 +477,252 @@ func expandVerkle(ctx *cli.Context) error {
 		log.Error("Failed to dump file", "err", err)
 	} else {
 		log.Info("Tree was dumped to file", "file", "dump.dot")
+	}
+	return nil
+}
+func dumpKeys(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
+	if chaindb == nil {
+		return errors.New("nil chaindb")
+	}
+	headBlock := rawdb.ReadHeadBlock(chaindb)
+	if headBlock == nil {
+		log.Error("Failed to load head block")
+		return errors.New("no head block")
+	}
+	if ctx.NArg() > 1 {
+		log.Error("Too many arguments given")
+		return errors.New("too many arguments")
+	}
+	var (
+		root common.Hash
+		err  error
+	)
+	if ctx.NArg() == 1 {
+		root, err = parseRoot(ctx.Args().First())
+		if err != nil {
+			log.Error("Failed to resolve state root", "error", err)
+			return err
+		}
+		log.Info("Start traversing the state", "root", root)
+	} else {
+		root = headBlock.Root()
+		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
+	}
+
+	var (
+		accounts   int
+		lastReport time.Time
+		start      = time.Now()
+		// Create map to hold file descriptors for each first byte
+		files = make(map[byte]*os.File)
+	)
+
+	snaptree, err := snapshot.New(snapshot.Config{CacheSize: 256}, chaindb, trie.NewDatabase(chaindb), root)
+	if err != nil {
+		return err
+	}
+	accIt, err := snaptree.AccountIterator(root, common.Hash{})
+	if err != nil {
+		return err
+	}
+	defer accIt.Release()
+
+	// root.FlushAtDepth(depth, saveverkle)
+
+	// Process all accounts sequentially
+	for accIt.Next() {
+		accounts += 1
+		acc, err := snapshot.FullAccount(accIt.Account())
+		if err != nil {
+			log.Error("Invalid account encountered during traversal", "error", err)
+			return err
+		}
+
+		// Store the basic account data
+		var (
+			nonce, balance, version, size [32]byte
+			newValues                     = make([][]byte, 256)
+		)
+		newValues[0] = version[:]
+		newValues[1] = balance[:]
+		newValues[2] = nonce[:]
+		newValues[4] = version[:] // memory-saving trick: by default, an account has 0 size
+		binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
+		for i, b := range acc.Balance.Bytes() {
+			balance[len(acc.Balance.Bytes())-1-i] = b
+		}
+		addr := rawdb.ReadPreimage(chaindb, accIt.Hash())
+		if addr == nil {
+			return fmt.Errorf("could not find preimage for address %x %v %v", accIt.Hash(), acc, accIt.Error())
+		}
+		addrPoint := tutils.EvaluateAddressPoint(addr)
+		stem := tutils.GetTreeKeyVersionWithEvaluatedAddress(addrPoint)
+
+		// Get first byte of key
+		firstByte := stem[0]
+
+		// Open or create file for this first byte
+		file, ok := files[firstByte]
+		if !ok {
+			file, _ = os.Create(fmt.Sprintf("%02x.bin", firstByte))
+			files[firstByte] = file
+		}
+
+		// Write tuple to file
+		binary.Write(file, binary.LittleEndian, stem)
+		binary.Write(file, binary.LittleEndian, version)
+		stem[31] = 1
+		binary.Write(file, binary.LittleEndian, stem)
+		binary.Write(file, binary.LittleEndian, balance)
+		stem[31] = 2
+		binary.Write(file, binary.LittleEndian, stem)
+		binary.Write(file, binary.LittleEndian, nonce)
+
+		// Store the account code if present
+		if !bytes.Equal(acc.CodeHash, emptyCode) {
+			code := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+			chunks := trie.ChunkifyCode(code)
+
+			for i := 0; i < 128 && i < len(chunks)/32; i++ {
+				stem[31] = byte(i + 128)
+				binary.Write(file, binary.LittleEndian, stem)
+				binary.Write(file, binary.LittleEndian, chunks[32*i:32*(i+1)])
+			}
+
+			for i := 128; i < len(chunks)/32; {
+				chunkkey := tutils.GetTreeKeyCodeChunkWithEvaluatedAddress(addrPoint, uint256.NewInt(uint64(i)))
+				j := i
+				for ; (j-i) < 256 && j < len(chunks)/32; j++ {
+					chunkkey[31] = byte(j - 128)
+					binary.Write(file, binary.LittleEndian, chunkkey)
+					binary.Write(file, binary.LittleEndian, chunks[32*j:32*(j+1)])
+				}
+				i = j
+			}
+
+			// Write the code size in the account header group
+			binary.LittleEndian.PutUint64(size[:8], uint64(len(code)))
+		}
+		stem[31] = 3
+		binary.Write(file, binary.LittleEndian, stem)
+		binary.Write(file, binary.LittleEndian, acc.CodeHash[:])
+		stem[31] = 4
+		binary.Write(file, binary.LittleEndian, stem)
+		binary.Write(file, binary.LittleEndian, size)
+
+		// Save every slot into the tree
+		if !bytes.Equal(acc.Root, emptyRoot[:]) {
+			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
+			if err != nil {
+				log.Error("Failed to open storage trie", "root", acc.Root, "error", err)
+				return err
+			}
+			defer storageIt.Release()
+
+			for storageIt.Next() {
+				// The value is RLP-encoded, decode it
+				var (
+					value     []byte   // slot value after RLP decoding
+					safeValue [32]byte // 32-byte aligned value
+				)
+				if err := rlp.DecodeBytes(storageIt.Slot(), &value); err != nil {
+					return fmt.Errorf("error decoding bytes %x: %w", storageIt.Slot(), err)
+				}
+				copy(safeValue[32-len(value):], value)
+
+				slotnr := rawdb.ReadPreimage(chaindb, storageIt.Hash())
+				if slotnr == nil {
+					return fmt.Errorf("could not find preimage for slot %x", storageIt.Hash())
+				}
+
+				// if the slot belongs to the header group, store it there - and skip
+				// calculating the slot key.
+				slotnrbig := uint256.NewInt(0).SetBytes(slotnr)
+				if slotnrbig.Cmp(uint256.NewInt(64)) < 0 {
+					stem[31] = 64 + slotnr[31]
+					binary.Write(file, binary.LittleEndian, stem)
+					binary.Write(file, binary.LittleEndian, safeValue[:])
+					continue
+				}
+
+				// Slot not in the header group, get its tree key
+				slotkey := tutils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrPoint, slotnrbig)
+				// TODO cache du slotkey
+
+				binary.Write(file, binary.LittleEndian, slotkey)
+				binary.Write(file, binary.LittleEndian, safeValue[:])
+			}
+			if storageIt.Error() != nil {
+				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIt.Error())
+				return storageIt.Error()
+			}
+		}
+
+		if time.Since(lastReport) > time.Second*8 {
+			log.Info("Traversing state", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+			lastReport = time.Now()
+		}
+	}
+	if accIt.Error() != nil {
+		log.Error("Failed to compute commitment", "root", root, "error", accIt.Error())
+		return accIt.Error()
+	}
+	log.Info("Wrote all leaves", "accounts", accounts, "elapsed", common.PrettyDuration(time.Since(start)))
+
+	// Close all files
+	for _, file := range files {
+		file.Close()
+	}
+
+	return nil
+}
+
+func sortKeys(ctx *cli.Context) error {
+	// Get list of files
+	files, _ := ioutil.ReadDir(".")
+
+	// Iterate over files
+	for _, file := range files {
+		// Check if file is a binary file
+		if !bytes.HasSuffix([]byte(file.Name()), []byte(".bin")) {
+			continue
+		}
+		data, _ := ioutil.ReadFile(file.Name())
+		numTuples := len(data) / 64
+		tuples := make([][64]byte, 0, numTuples)
+		binary.Read(bytes.NewReader(data), binary.LittleEndian, &tuples)
+
+		// Sort tuples by key
+		sort.Slice(tuples, func(i, j int) bool {
+			return bytes.Compare(tuples[i][:32], tuples[j][:32]) < 0
+		})
+
+		// Merge the values
+		type mergedTuple struct {
+			stem   [31]byte
+			values [256][]byte
+		}
+		mergedtuples := make([]mergedTuple, 0, numTuples)
+		var last [31]byte
+		for i := range tuples {
+			if !bytes.Equal(tuples[i][:31], last[:]) {
+				mergedtuples = append(mergedtuples, mergedTuple{})
+				copy(mergedtuples[len(mergedtuples)-1].stem[:], tuples[i][:])
+
+				copy(last[:], tuples[i][:31])
+			}
+
+			mergedtuples[len(mergedtuples)-1].values[tuples[i][31]] = tuples[i][32:]
+		}
+
+		// Write sorted tuples back to file
+		file, _ := os.Create("sorted-" + file.Name())
+		binary.Write(file, binary.LittleEndian, &mergedtuples)
+		file.Close()
 	}
 	return nil
 }
