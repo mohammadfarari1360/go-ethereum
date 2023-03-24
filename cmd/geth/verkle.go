@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -688,40 +689,54 @@ func sortKeys(ctx *cli.Context) error {
 	// Iterate over files
 	for _, file := range files {
 		// Check if file is a binary file
-		if !bytes.HasSuffix([]byte(file.Name()), []byte(".bin")) {
+		if !bytes.HasSuffix([]byte(file.Name()), []byte(".bin")) || bytes.HasPrefix([]byte(file.Name()), []byte("sorted-")) {
 			continue
 		}
+		log.Info("Processing file", "name", file.Name())
 		data, _ := ioutil.ReadFile(file.Name())
 		numTuples := len(data) / 64
 		tuples := make([][64]byte, 0, numTuples)
-		binary.Read(bytes.NewReader(data), binary.LittleEndian, &tuples)
+		reader := bytes.NewReader(data)
+		for {
+			var tuple [64]byte
+			err := binary.Read(reader, binary.LittleEndian, &tuple)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				panic(err)
+			}
+			tuples = append(tuples, tuple)
+		}
 
 		// Sort tuples by key
+		log.Info("Sorting file", "name", file.Name())
 		sort.Slice(tuples, func(i, j int) bool {
 			return bytes.Compare(tuples[i][:32], tuples[j][:32]) < 0
 		})
 
 		// Merge the values
-		type mergedTuple struct {
+		log.Info("Merging file", "name", file.Name())
+		file, _ := os.Create("sorted-" + file.Name())
+		var (
 			stem   [31]byte
 			values [256][]byte
-		}
-		mergedtuples := make([]mergedTuple, 0, numTuples)
-		var last [31]byte
+			last   [31]byte
+		)
 		for i := range tuples {
-			if !bytes.Equal(tuples[i][:31], last[:]) {
-				mergedtuples = append(mergedtuples, mergedTuple{})
-				copy(mergedtuples[len(mergedtuples)-1].stem[:], tuples[i][:])
+			copy(stem[:], tuples[i][:31])
+			if stem != last {
+				binary.Write(file, binary.LittleEndian, last)
+				binary.Write(file, binary.LittleEndian, values)
 
 				copy(last[:], tuples[i][:31])
 			}
 
-			mergedtuples[len(mergedtuples)-1].values[tuples[i][31]] = tuples[i][32:]
+			values[tuples[i][31]] = tuples[i][32:]
 		}
 
 		// Write sorted tuples back to file
-		file, _ := os.Create("sorted-" + file.Name())
-		binary.Write(file, binary.LittleEndian, &mergedtuples)
+		log.Info("Writing file", "name", file.Name())
 		file.Close()
 	}
 	return nil
