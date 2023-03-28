@@ -94,7 +94,9 @@ in which key1, key2, ... are expanded.
 				Usage:     "Dump the converted keys of a verkle tree to a series of flat binary files",
 				ArgsUsage: "<root>",
 				Action:    dumpKeys,
-				Flags:     flags.Merge(utils.NetworkFlags, utils.DatabasePathFlags),
+				Flags: flags.Merge(utils.NetworkFlags, utils.DatabasePathFlags, []cli.Flag{
+					&cli.BoolFlag{Name: "dump-preimages", Usage: "Dump the preimage in reading orger"},
+					&cli.StringFlag{Name: "preimage-file", Usage: "Name of the preimage file for which values are in order"}}),
 				Description: `
 geth verkle dump-keys
 Dump all converted (key, value) tuples in binary files, for later processing by sort-files.
@@ -481,6 +483,18 @@ func expandVerkle(ctx *cli.Context) error {
 	}
 	return nil
 }
+
+func getFile(files map[byte]*os.File, stem []byte) *os.File {
+	firstByte := stem[0]
+
+	// Open or create file for this first byte
+	file, ok := files[firstByte]
+	if !ok {
+		file, _ = os.Create(fmt.Sprintf("%02x.bin", firstByte))
+		files[firstByte] = file
+	}
+	return file
+}
 func dumpKeys(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
@@ -499,8 +513,10 @@ func dumpKeys(ctx *cli.Context) error {
 		return errors.New("too many arguments")
 	}
 	var (
-		root common.Hash
-		err  error
+		root          common.Hash
+		err           error
+		dumppreimages bool
+		preimagefile  *os.File
 	)
 	if ctx.NArg() == 1 {
 		root, err = parseRoot(ctx.Args().First())
@@ -513,6 +529,7 @@ func dumpKeys(ctx *cli.Context) error {
 		root = headBlock.Root()
 		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
 	}
+	dumppreimages = ctx.Bool("dump-preimages")
 
 	var (
 		accounts   int
@@ -532,7 +549,17 @@ func dumpKeys(ctx *cli.Context) error {
 	}
 	defer accIt.Release()
 
-	// root.FlushAtDepth(depth, saveverkle)
+	if dumppreimages {
+		preimagefile, _ = os.Create("preimages.bin")
+		defer preimagefile.Close()
+	} else {
+		if filename := ctx.String("preimage-file"); filename != "" {
+			preimagefile, err = os.Open(filename)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	// Process all accounts sequentially
 	for accIt.Next() {
@@ -556,23 +583,34 @@ func dumpKeys(ctx *cli.Context) error {
 		for i, b := range acc.Balance.Bytes() {
 			balance[len(acc.Balance.Bytes())-1-i] = b
 		}
-		addr := rawdb.ReadPreimage(chaindb, accIt.Hash())
+		var addr []byte
+		if !dumppreimages && preimagefile != nil {
+			var h [32]byte
+			_, err = preimagefile.Read(h[:])
+			if err != nil {
+				panic(err)
+			}
+			if !bytes.Equal(h[:], accIt.Hash().Bytes()) {
+				panic("differing hashes")
+			}
+			var a [20]byte
+			_, err = preimagefile.Read(a[:])
+			addr = a[:]
+		} else {
+			addr = rawdb.ReadPreimage(chaindb, accIt.Hash())
+		}
 		if addr == nil {
 			return fmt.Errorf("could not find preimage for address %x %v %v", accIt.Hash(), acc, accIt.Error())
+		}
+		if dumppreimages {
+			binary.Write(preimagefile, binary.LittleEndian, accIt.Hash())
+			binary.Write(preimagefile, binary.LittleEndian, 20)
+			binary.Write(preimagefile, binary.LittleEndian, addr)
 		}
 		addrPoint := tutils.EvaluateAddressPoint(addr)
 		stem := tutils.GetTreeKeyVersionWithEvaluatedAddress(addrPoint)
 
-		// Get first byte of key
-		firstByte := stem[0]
-
-		// Open or create file for this first byte
-		file, ok := files[firstByte]
-		if !ok {
-			file, _ = os.Create(fmt.Sprintf("%02x.bin", firstByte))
-			files[firstByte] = file
-		}
-
+		file := getFile(files, stem)
 		// Write tuple to file
 		binary.Write(file, binary.LittleEndian, stem)
 		binary.Write(file, binary.LittleEndian, version)
@@ -597,10 +635,11 @@ func dumpKeys(ctx *cli.Context) error {
 			for i := 128; i < len(chunks)/32; {
 				chunkkey := tutils.GetTreeKeyCodeChunkWithEvaluatedAddress(addrPoint, uint256.NewInt(uint64(i)))
 				j := i
+				chunkFile := getFile(files, chunkkey)
 				for ; (j-i) < 256 && j < len(chunks)/32; j++ {
 					chunkkey[31] = byte(j - 128)
-					binary.Write(file, binary.LittleEndian, chunkkey)
-					binary.Write(file, binary.LittleEndian, chunks[32*j:32*(j+1)])
+					binary.Write(chunkFile, binary.LittleEndian, chunkkey)
+					binary.Write(chunkFile, binary.LittleEndian, chunks[32*j:32*(j+1)])
 				}
 				i = j
 			}
@@ -635,9 +674,29 @@ func dumpKeys(ctx *cli.Context) error {
 				}
 				copy(safeValue[32-len(value):], value)
 
-				slotnr := rawdb.ReadPreimage(chaindb, storageIt.Hash())
+				var slotnr []byte
+				if !dumppreimages && preimagefile != nil {
+					var h [32]byte
+					_, err = preimagefile.Read(h[:])
+					if err != nil {
+						panic(err)
+					}
+					if !bytes.Equal(h[:], storageIt.Hash().Bytes()) {
+						panic("differing hashes")
+					}
+					var s [32]byte
+					_, err = preimagefile.Read(s[:])
+					slotnr = s[:]
+				} else {
+					slotnr = rawdb.ReadPreimage(chaindb, storageIt.Hash())
+				}
 				if slotnr == nil {
 					return fmt.Errorf("could not find preimage for slot %x", storageIt.Hash())
+				}
+				if dumppreimages {
+					binary.Write(preimagefile, binary.LittleEndian, storageIt.Hash())
+					binary.Write(preimagefile, binary.LittleEndian, 32)
+					binary.Write(preimagefile, binary.LittleEndian, slotnr)
 				}
 
 				// if the slot belongs to the header group, store it there - and skip
@@ -654,8 +713,9 @@ func dumpKeys(ctx *cli.Context) error {
 				slotkey := tutils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrPoint, slotnrbig)
 				// TODO cache du slotkey
 
-				binary.Write(file, binary.LittleEndian, slotkey)
-				binary.Write(file, binary.LittleEndian, safeValue[:])
+				slotfile := getFile(files, slotkey)
+				binary.Write(slotfile, binary.LittleEndian, slotkey)
+				binary.Write(slotfile, binary.LittleEndian, safeValue[:])
 			}
 			if storageIt.Error() != nil {
 				log.Error("Failed to traverse storage trie", "root", acc.Root, "error", storageIt.Error())
