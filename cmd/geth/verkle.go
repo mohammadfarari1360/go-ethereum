@@ -508,27 +508,15 @@ func dumpKeys(ctx *cli.Context) error {
 		log.Error("Failed to load head block")
 		return errors.New("no head block")
 	}
-	if ctx.NArg() > 1 {
-		log.Error("Too many arguments given")
-		return errors.New("too many arguments")
-	}
 	var (
 		root          common.Hash
 		err           error
 		dumppreimages bool
 		preimagefile  *os.File
 	)
-	if ctx.NArg() == 1 {
-		root, err = parseRoot(ctx.Args().First())
-		if err != nil {
-			log.Error("Failed to resolve state root", "error", err)
-			return err
-		}
-		log.Info("Start traversing the state", "root", root)
-	} else {
-		root = headBlock.Root()
-		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
-	}
+	root = headBlock.Root()
+	log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
+
 	dumppreimages = ctx.Bool("dump-preimages")
 
 	var (
