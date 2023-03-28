@@ -737,7 +737,8 @@ func sortKeys(ctx *cli.Context) error {
 	// Iterate over files
 	for _, file := range files {
 		// Check if file is a binary file
-		if !bytes.HasSuffix([]byte(file.Name()), []byte(".bin")) || bytes.HasPrefix([]byte(file.Name()), []byte("sorted-")) {
+		fname := file.Name()
+		if !bytes.HasSuffix([]byte(fname), []byte(".bin")) || bytes.HasPrefix([]byte(fname), []byte("sorted-")) || len(fname) != 6 {
 			continue
 		}
 		log.Info("Processing file", "name", file.Name())
