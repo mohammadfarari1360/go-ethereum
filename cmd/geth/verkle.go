@@ -733,6 +733,7 @@ func dumpKeys(ctx *cli.Context) error {
 func sortKeys(ctx *cli.Context) error {
 	// Get list of files
 	files, _ := ioutil.ReadDir(".")
+	root := verkle.New()
 
 	// Iterate over files
 	for _, file := range files {
@@ -778,15 +779,24 @@ func sortKeys(ctx *cli.Context) error {
 				binary.Write(file, binary.LittleEndian, last)
 				binary.Write(file, binary.LittleEndian, values)
 
+				var istem [31]byte
+				istem = stem
+				root.(*verkle.InternalNode).InsertStem(istem[:], values[:], nil)
 				copy(last[:], tuples[i][:31])
 			}
 
-			values[tuples[i][31]] = tuples[i][32:]
+			values[tuples[i][31]] = make([]byte, 32)
+			copy(values[tuples[i][31]], tuples[i][32:])
 		}
+
+		// Committing file
+		log.Info("Committing file", "name", file.Name())
+		root.Commit()
 
 		// Write sorted tuples back to file
 		log.Info("Writing file", "name", file.Name())
 		file.Close()
+		root.(*verkle.InternalNode).FlushAtDepth(0, nil)
 	}
 	return nil
 }
