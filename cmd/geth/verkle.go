@@ -770,9 +770,12 @@ func sortKeys(ctx *cli.Context) error {
 		file, _ := os.Create("sorted-" + file.Name())
 		var (
 			stem   [31]byte
-			values [256][]byte
+			values = make([][]byte, 256)
 			last   [31]byte
 		)
+		if len(tuples) > 0 {
+			copy(last[:], tuples[0][:31])
+		}
 		for i := range tuples {
 			copy(stem[:], tuples[i][:31])
 			if stem != last {
@@ -780,13 +783,25 @@ func sortKeys(ctx *cli.Context) error {
 				binary.Write(file, binary.LittleEndian, values)
 
 				var istem [31]byte
-				istem = stem
-				root.(*verkle.InternalNode).InsertStem(istem[:], values[:], nil)
-				copy(last[:], tuples[i][:31])
+				istem = last
+				err := root.(*verkle.InternalNode).InsertStem(istem[:], values, nil)
+				if err != nil {
+					panic(err)
+				}
+				copy(last[:], stem[:])
+				values = make([][]byte, 256)
 			}
 
 			values[tuples[i][31]] = make([]byte, 32)
 			copy(values[tuples[i][31]], tuples[i][32:])
+		}
+
+		// dump the last group
+		binary.Write(file, binary.LittleEndian, stem)
+		binary.Write(file, binary.LittleEndian, values)
+		err := root.(*verkle.InternalNode).InsertStem(stem[:], values, nil)
+		if err != nil {
+			panic(err)
 		}
 
 		// Committing file
@@ -796,7 +811,7 @@ func sortKeys(ctx *cli.Context) error {
 		// Write sorted tuples back to file
 		log.Info("Writing file", "name", file.Name())
 		file.Close()
-		root.(*verkle.InternalNode).FlushAtDepth(0, nil)
 	}
+	log.Info("Done", "root", root.Commit().Bytes())
 	return nil
 }
