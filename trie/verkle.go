@@ -273,18 +273,18 @@ func (trie *VerkleTrie) IsVerkle() bool {
 	return true
 }
 
-func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[string][]byte) ([]byte, []verkle.KeyValuePair, error) {
+func (trie *VerkleTrie) ProveAndSerialize(keys [][]byte, kv map[string][]byte) (*verkle.VerkleProof, verkle.StateDiff, error) {
 	proof, _, _, _, err := verkle.MakeVerkleMultiProof(trie.root, keys, kv)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	p, kvps, err := verkle.SerializeProof(proof)
+	p, sdiff, err := verkle.SerializeProof(proof)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return p, kvps, nil
+	return p, sdiff, nil
 }
 
 type set = map[string]struct{}
@@ -293,10 +293,10 @@ func addKey(s set, key []byte) {
 	s[string(key)] = struct{}{}
 }
 
-func DeserializeAndVerifyVerkleProof(serialized []byte, root []byte, keyvals []verkle.KeyValuePair) error {
+func DeserializeAndVerifyVerkleProof(p *verkle.VerkleProof, root []byte, sdiff verkle.StateDiff) error {
 	rootC := new(verkle.Point)
 	rootC.SetBytesTrusted(root)
-	proof, cis, indices, yis, err := deserializeVerkleProof(serialized, rootC, keyvals)
+	proof, cis, indices, yis, err := deserializeVerkleProof(p, rootC, sdiff)
 	if err != nil {
 		return fmt.Errorf("could not deserialize proof: %w", err)
 	}
@@ -308,10 +308,10 @@ func DeserializeAndVerifyVerkleProof(serialized []byte, root []byte, keyvals []v
 	return nil
 }
 
-func deserializeVerkleProof(serialized []byte, rootC *verkle.Point, keyvals []verkle.KeyValuePair) (*verkle.Proof, []*verkle.Point, []byte, []*verkle.Fr, error) {
+func deserializeVerkleProof(p *verkle.VerkleProof, rootC *verkle.Point, statediff verkle.StateDiff) (*verkle.Proof, []*verkle.Point, []byte, []*verkle.Fr, error) {
 	var others set = set{} // Mark when an "other" stem has been seen
 
-	proof, err := verkle.DeserializeProof(serialized, keyvals)
+	proof, err := verkle.DeserializeProof(p, statediff)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("verkle proof deserialization error: %w", err)
 	}
@@ -328,14 +328,16 @@ func deserializeVerkleProof(serialized []byte, rootC *verkle.Point, keyvals []ve
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("error rebuilding the tree from proof: %w", err)
 	}
-	for _, kv := range keyvals {
-		val, err := tree.Get(kv.Key, nil)
+	for _, sdiff := range statediff {
+		vals, err := tree.GetStem(sdiff.Stem, nil)
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("could not find key %x in tree rebuilt from proof: %w", kv.Key, err)
+			return nil, nil, nil, nil, fmt.Errorf("could not find stem %x in tree rebuilt from proof: %w", sdiff.Stem, err)
 		}
 
-		if !bytes.Equal(val, kv.Value) {
-			return nil, nil, nil, nil, fmt.Errorf("could not find correct value at %x in tree rebuilt from proof: %x != %x", kv.Key, val, kv.Value)
+		for i, suffdiff := range sdiff.SuffixDiffs {
+			if !bytes.Equal(suffdiff.CurrentValue[:], vals[i]) {
+				return nil, nil, nil, nil, fmt.Errorf("could not find correct value at %x%x in tree rebuilt from proof: %x != %x", sdiff.Stem, suffdiff.Suffix, suffdiff.CurrentValue, vals[i])
+			}
 		}
 	}
 
