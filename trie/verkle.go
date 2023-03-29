@@ -329,7 +329,7 @@ func deserializeVerkleProof(p *verkle.VerkleProof, rootC *verkle.Point, statedif
 		return nil, nil, nil, nil, fmt.Errorf("error rebuilding the tree from proof: %w", err)
 	}
 	for _, sdiff := range statediff {
-		vals, err := tree.GetStem(sdiff.Stem, nil)
+		vals, err := tree.(*verkle.InternalNode).GetStem(sdiff.Stem[:], nil)
 		if err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("could not find stem %x in tree rebuilt from proof: %w", sdiff.Stem, err)
 		}
