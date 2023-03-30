@@ -329,14 +329,17 @@ func deserializeVerkleProof(p *verkle.VerkleProof, rootC *verkle.Point, statedif
 		return nil, nil, nil, nil, fmt.Errorf("error rebuilding the tree from proof: %w", err)
 	}
 	for _, sdiff := range statediff {
-		vals, err := tree.(*verkle.InternalNode).GetStem(sdiff.Stem[:], nil)
-		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("could not find stem %x in tree rebuilt from proof: %w", sdiff.Stem, err)
-		}
 
 		for i, suffdiff := range sdiff.SuffixDiffs {
-			if !bytes.Equal(suffdiff.CurrentValue[:], vals[i]) {
-				return nil, nil, nil, nil, fmt.Errorf("could not find correct value at %x%x in tree rebuilt from proof: %x != %x", sdiff.Stem, suffdiff.Suffix, suffdiff.CurrentValue, vals[i])
+			var k [32]byte
+			copy(k[:], sdiff.Stem[:])
+			k[31] = byte(i)
+			value, err := tree.Get(k[:], nil)
+			if err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("could not find key %x in tree rebuilt from proof: %w", k, err)
+			}
+			if !bytes.Equal(suffdiff.CurrentValue[:], value[:]) {
+				return nil, nil, nil, nil, fmt.Errorf("could not find correct value at %x%x in tree rebuilt from proof: %x != %x", sdiff.Stem, suffdiff.Suffix, suffdiff.CurrentValue, value)
 			}
 		}
 	}
