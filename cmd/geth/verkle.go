@@ -96,7 +96,8 @@ in which key1, key2, ... are expanded.
 				Action:    dumpKeys,
 				Flags: flags.Merge(utils.NetworkFlags, utils.DatabasePathFlags, []cli.Flag{
 					&cli.BoolFlag{Name: "dump-preimages", Usage: "Dump the preimage in reading orger"},
-					&cli.StringFlag{Name: "preimage-file", Usage: "Name of the preimage file for which values are in order"}}),
+					&cli.StringFlag{Name: "preimage-file", Usage: "Name of the preimage file for which values are in order"},
+				}),
 				Description: `
 geth verkle dump-keys
 Dump all converted (key, value) tuples in binary files, for later processing by sort-files.
@@ -241,7 +242,7 @@ func convertToVerkle(ctx *cli.Context) error {
 
 		// Save every slot into the tree
 		if !bytes.Equal(acc.Root, emptyRoot[:]) {
-			var translatedStorage = map[string][][]byte{}
+			translatedStorage := map[string][][]byte{}
 
 			storageIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
 			if err != nil {
@@ -495,6 +496,7 @@ func getFile(files map[byte]*os.File, stem []byte) *os.File {
 	}
 	return file
 }
+
 func dumpKeys(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
@@ -698,8 +700,7 @@ func dumpKeys(ctx *cli.Context) error {
 				}
 
 				// Slot not in the header group, get its tree key
-				slotkey := tutils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrPoint, slotnrbig)
-				// TODO cache du slotkey
+				slotkey := tutils.GetTreeKeyStorageSlotWithEvaluatedAddress(addrPoint, slotnr)
 
 				slotfile := getFile(files, slotkey)
 				binary.Write(slotfile, binary.LittleEndian, slotkey)
@@ -733,6 +734,7 @@ func dumpKeys(ctx *cli.Context) error {
 func sortKeys(ctx *cli.Context) error {
 	// Get list of files
 	files, _ := ioutil.ReadDir(".")
+	start := time.Now()
 	root := verkle.New()
 
 	// Iterate over files
@@ -812,6 +814,7 @@ func sortKeys(ctx *cli.Context) error {
 		log.Info("Writing file", "name", file.Name())
 		file.Close()
 	}
-	log.Info("Done", "root", root.Commit().Bytes())
+	log.Info("Done", "root", fmt.Sprintf("%x", root.Commit().Bytes()))
+	log.Info("Finished", "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
