@@ -330,7 +330,6 @@ func deserializeVerkleProof(vp *verkle.VerkleProof, rootC *verkle.Point, statedi
 	}
 	for _, stemdiff := range statediff {
 		for _, suffixdiff := range stemdiff.SuffixDiffs {
-
 			var key [32]byte
 			copy(key[:31], stemdiff.Stem[:])
 			key[31] = suffixdiff.Suffix
@@ -348,7 +347,6 @@ func deserializeVerkleProof(vp *verkle.VerkleProof, rootC *verkle.Point, statedi
 					return nil, nil, nil, nil, fmt.Errorf("could not find correct value at %x in tree rebuilt from proof: %x != %x", key, val, *suffixdiff.CurrentValue)
 				}
 			}
-
 		}
 	}
 
