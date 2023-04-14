@@ -139,8 +139,14 @@ github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff h1:tY80oXqG
 github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff/go.mod h1:x7DCsMOv1taUwEWCzT4cmDeAkigA5/QCwUodaVOe8Ww=
 github.com/gballet/go-verkle v0.0.0-20230317174103-141354da6b11 h1:x4hiQFgr1SlqR4IoAZiXLFZK4L7KbibqkORqa1fwKp8=
 github.com/gballet/go-verkle v0.0.0-20230317174103-141354da6b11/go.mod h1:IyOnn1kujMWaT+wet/6Ix1BtvYwateOBy9puuWH/8sw=
+github.com/gballet/go-verkle v0.0.0-20230412090410-4015adc3d072 h1:gKcktHMBKLdtCSZnaG8tv9bFG80p1tp7MjU1Uvl9nag=
+github.com/gballet/go-verkle v0.0.0-20230412090410-4015adc3d072/go.mod h1:P3bwGrLhsUNIsUDlq2yzMPvO1c/15oiB3JS85P+hNfw=
+github.com/gballet/go-verkle v0.0.0-20230413104310-bd8d6d33de95 h1:s8p8L/dQVmr/mgMjGIsGnnpvJMYCdfv4GHadLd/ALug=
+github.com/gballet/go-verkle v0.0.0-20230413104310-bd8d6d33de95/go.mod h1:P3bwGrLhsUNIsUDlq2yzMPvO1c/15oiB3JS85P+hNfw=
 github.com/gballet/go-verkle v0.0.0-20230413135631-4bea2763ed0f h1:gP4uR2/1qx6hsIzbRI28JWcsVuP7xyjyj6SpLnoFobc=
 github.com/gballet/go-verkle v0.0.0-20230413135631-4bea2763ed0f/go.mod h1:P3bwGrLhsUNIsUDlq2yzMPvO1c/15oiB3JS85P+hNfw=
+github.com/gballet/go-verkle v0.0.0-20230414192453-2838510d5ee0 h1:ENyj6hcn+dtO8iJ1GTzM/gkhdrAFqMi65Yf99cppdPA=
+github.com/gballet/go-verkle v0.0.0-20230414192453-2838510d5ee0/go.mod h1:P3bwGrLhsUNIsUDlq2yzMPvO1c/15oiB3JS85P+hNfw=
 github.com/getkin/kin-openapi v0.53.0/go.mod h1:7Yn5whZr5kJi6t+kShccXS8ae1APpYTW6yheSwk8Yi4=
 github.com/getkin/kin-openapi v0.61.0/go.mod h1:7Yn5whZr5kJi6t+kShccXS8ae1APpYTW6yheSwk8Yi4=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=

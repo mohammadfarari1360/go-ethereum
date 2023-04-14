@@ -387,7 +387,7 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 	for i := 0; i < n; i++ {
 		statedb, err := state.New(parent.Root(), state.NewDatabaseWithConfig(db, &trie.Config{UseVerkle: true}), snaps)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("could not find state for block %d: err=%v, parent root=%x", i, err, parent.Root()))
 		}
 		block, receipt := genblock(i, parent, statedb)
 		blocks[i] = block
