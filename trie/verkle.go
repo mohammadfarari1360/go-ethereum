@@ -63,7 +63,7 @@ func (trie *VerkleTrie) GetKey(key []byte) []byte {
 // trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryGet(addr, key []byte) ([]byte, error) {
 	pointEval := trie.pointCache.GetTreeKeyHeader(addr)
-	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(pointEval, new(uint256.Int).SetBytes(key))
+	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(pointEval, key)
 	return trie.root.Get(k, trie.db.diskdb.Get)
 }
 
@@ -171,7 +171,7 @@ func (trie *VerkleTrie) TryUpdateStem(key []byte, values [][]byte) error {
 // by the caller while they are stored in the trie. If a node was not found in the
 // database, a trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryUpdate(address, key, value []byte) error {
-	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(trie.pointCache.GetTreeKeyHeader(address), new(uint256.Int).SetBytes(key[:]))
+	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(trie.pointCache.GetTreeKeyHeader(address), key[:])
 	var v [32]byte
 	copy(v[:], value[:])
 	return trie.root.Insert(k, v[:], func(h []byte) ([]byte, error) {
@@ -212,7 +212,7 @@ func (t *VerkleTrie) TryDeleteAccount(key []byte) error {
 // found in the database, a trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryDelete(addr, key []byte) error {
 	pointEval := trie.pointCache.GetTreeKeyHeader(addr)
-	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(pointEval, new(uint256.Int).SetBytes(key))
+	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(pointEval, key)
 	return trie.root.Delete(k, func(h []byte) ([]byte, error) {
 		return trie.db.diskdb.Get(h)
 	})
