@@ -92,7 +92,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	// verkle transition: if the conversoin process is in progress, move
+	// verkle transition: if the conversion process is in progress, move
 	// N values from the MPT into the verkle tree.
 	if fdb, ok := statedb.Database().(*state.ForkingDB); ok {
 		if fdb.InTransition() {

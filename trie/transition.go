@@ -43,8 +43,8 @@ func (t *TransitionTrie) Base() *SecureTrie {
 //
 // TODO(fjl): remove this when StateTrie is removed
 func (t *TransitionTrie) GetKey(key []byte) []byte {
-	if t.overlay.GetKey(key) != nil {
-		return t.overlay.GetKey(key)
+	if key := t.overlay.GetKey(key); key != nil {
+		return key
 	}
 	return t.base.GetKey(key)
 }
@@ -53,8 +53,8 @@ func (t *TransitionTrie) GetKey(key []byte) []byte {
 // not be modified by the caller. If a node was not found in the database, a
 // trie.MissingNodeError is returned.
 func (t *TransitionTrie) TryGet(addr, key []byte) ([]byte, error) {
-	if t.overlay.GetKey(key) != nil {
-		return t.overlay.TryGet(addr, key)
+	if val, err := t.overlay.TryGet(addr, key); len(val) != 0 || err != nil {
+		return val, nil
 	}
 	// TODO also insert value into overlay
 	return t.base.TryGet(nil, key)
