@@ -17,17 +17,22 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -86,6 +91,75 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}
+
+	// verkle transition: if the conversoin process is in progress, move
+	// N values from the MPT into the verkle tree.
+	if fdb, ok := statedb.Database().(*state.ForkingDB); ok {
+		if fdb.InTransition() {
+			// XXX overkill, just save the parent root in the forking db
+			tt := statedb.GetTrie().(*trie.TransitionTrie)
+			mpt := tt.Base()
+
+			accIt, err := statedb.Snaps().AccountIterator(mpt.Hash(), fdb.LastAccHash)
+			if err != nil {
+				return nil, nil, 0, err
+			}
+			stIt, err := statedb.Snaps().StorageIterator(mpt.Hash(), fdb.LastAccHash, fdb.LastSlotHash)
+			if err != nil {
+				return nil, nil, 0, err
+			}
+
+			// move N=500 accounts into the verkle tree, starting with the
+			// slots from the previous account.
+			count := 0
+			for ; stIt.Next() && count < 500; count++ {
+				slotnr := rawdb.ReadPreimage(statedb.Database().DiskDB(), stIt.Hash())
+
+				// @jsign: do your magic here adding the slot `slotnr`
+			}
+
+			// if less than 500 slots were moved, move to the next account
+			for count < 500 {
+				if accIt.Next() {
+					acc, err := snapshot.FullAccount(accIt.Account())
+					if err != nil {
+						log.Error("Invalid account encountered during traversal", "error", err)
+						return err
+					}
+					addr := rawdb.ReadPreimage(statedb.Database().DiskDB(), accIt.Hash())
+
+					// @jsign: do your magic here adding the account at `addr
+
+					// Store the account code if present
+					if !bytes.Equal(acc.CodeHash, emptyCode) {
+						code := rawdb.ReadCode(statedb.Database().DiskDB(), common.BytesToHash(acc.CodeHash))
+						chunks := trie.ChunkifyCode(code)
+
+						// @jsign: do your magic here with the code chunks
+					}
+
+					if !bytes.Equal(acc.Root, emptyRoot[:]) {
+						for ; stIt.Next() && count < 500; count++ {
+							slotnr := rawdb.ReadPreimage(statedb.Database().DiskDB(), stIt.Hash())
+
+							// @jsign do your magic here with extra slots
+						}
+					}
+				}
+			}
+
+			// If the iterators have reached the end, mark the
+			// transition as complete.
+			if !accIt.Next() && !stIt.Next() {
+				fdb.EndTransition()
+			} else {
+				// Update the pointers in the forking db
+				fdb.LastAccHash = accIt.Hash()
+				fdb.LastSlotHash = stIt.Hash()
+			}
+		}
+	}
+
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles())
 
