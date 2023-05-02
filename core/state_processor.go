@@ -135,21 +135,21 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 					acc, err := snapshot.FullAccount(accIt.Account())
 					if err != nil {
 						log.Error("Invalid account encountered during traversal", "error", err)
-						return err
+						return nil, nil, 0, err
 					}
 					addr := rawdb.ReadPreimage(statedb.Database().DiskDB(), accIt.Hash())
 
 					mkv.addAccount(addr, acc)
 
 					// Store the account code if present
-					if !bytes.Equal(acc.CodeHash, emptyCode) {
+					if !bytes.Equal(acc.CodeHash, emptyCodeHash[:]) {
 						code := rawdb.ReadCode(statedb.Database().DiskDB(), common.BytesToHash(acc.CodeHash))
 						chunks := trie.ChunkifyCode(code)
 
 						mkv.addAccountCode(addr, uint64(len(code)), chunks)
 					}
 
-					if !bytes.Equal(acc.Root, emptyRoot[:]) {
+					if acc.HasStorage() {
 						for ; stIt.Next() && count < maxMovedCount; count++ {
 							slotnr := rawdb.ReadPreimage(statedb.Database().DiskDB(), stIt.Hash())
 
