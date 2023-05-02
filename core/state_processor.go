@@ -119,7 +119,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			// mkv will be assiting in the collection of up to maxMovedCount key values to be migrated to the VKT.
 			// It has internal caches to do efficient MPT->VKT key calculations, which will be discarded after
 			// this function.
-			mkv := &keyValueMigrator{}
+			mkv := &keyValueMigrator{vktLeafData: make(map[string]*verkle.BatchNewLeafNodeData)}
 			// move maxCount accounts into the verkle tree, starting with the
 			// slots from the previous account.
 			count := 0
