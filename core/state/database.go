@@ -190,9 +190,9 @@ func (fdb *ForkingDB) ContractCodeSize(addrHash common.Hash, codeHash common.Has
 // CopyTrie implements Database
 func (fdb *ForkingDB) CopyTrie(t Trie) Trie {
 	mpt := fdb.cachingDB.CopyTrie(t)
-	overlay := fdb.VerkleDB.CopyTrie(t)
 
 	if fdb.started {
+		overlay := fdb.VerkleDB.CopyTrie(t)
 		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), overlay.(*trie.VerkleTrie))
 	}
 

@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/gballet/go-verkle"
 )
 
 type TransitionTrie struct {
@@ -139,4 +140,17 @@ func (t *TransitionTrie) Prove(key []byte, fromLevel uint, proofDb ethdb.KeyValu
 func (t *TransitionTrie) IsVerkle() bool {
 	// For all intents and purposes, the calling code should treat this as a verkle trie
 	return true
+}
+
+func (t *TransitionTrie) TryUpdateStem(key []byte, values [][]byte) error {
+	trie := t.overlay
+	resolver := func(h []byte) ([]byte, error) {
+		return trie.db.diskdb.Get(h)
+	}
+	switch root := trie.root.(type) {
+	case *verkle.InternalNode:
+		return root.InsertStem(key, values, resolver)
+	default:
+		panic("invalid root type")
+	}
 }

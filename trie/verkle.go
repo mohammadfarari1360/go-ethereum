@@ -160,8 +160,6 @@ func (trie *VerkleTrie) TryUpdateStem(key []byte, values [][]byte) error {
 	switch root := trie.root.(type) {
 	case *verkle.InternalNode:
 		return root.InsertStem(key, values, resolver)
-	case *verkle.StatelessNode:
-		return root.InsertAtStem(key, values, resolver, true)
 	default:
 		panic("invalid root type")
 	}
