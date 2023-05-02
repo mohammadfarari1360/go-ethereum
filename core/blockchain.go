@@ -18,12 +18,15 @@
 package core
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1484,6 +1487,23 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		return 0, nil
 	}
 
+	// Open "conversion.txt" for reading, and convert the two fields in the file
+	// to the conversionBlock and conversionEnd uint64 variables.
+	f, err := os.Open("conversion.txt")
+	if err != nil {
+		log.Error("Failed to open conversion.txt", "err", err)
+		return 0, err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Scan()
+	conversionBlock, err := strconv.ParseUint(scanner.Text(), 10, 64)
+	if err != nil {
+		log.Error("Failed to parse conversionBlock", "err", err)
+		return 0, err
+	}
+	log.Info("Found conversion block info", "conversionBlock", conversionBlock)
+
 	// Start a parallel signature recovery (signer will fluke on fork transition, minimal perf loss)
 	senderCacher.recoverFromBlocks(types.MakeSigner(bc.chainConfig, chain[0].Number()), chain)
 
@@ -1669,7 +1689,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 
-		conversionBlock := uint64(17000) // random block number for now
 		if parent.Number.Uint64() == conversionBlock {
 			bc.StartVerkleTransition(parent.Root, emptyVerkleRoot)
 		}
@@ -2439,8 +2458,4 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 
 func (bc *BlockChain) StartVerkleTransition(originalRoot, translatedRoot common.Hash) {
 	bc.stateCache.(*state.ForkingDB).StartTransition(originalRoot, translatedRoot)
-}
-
-func (bc *BlockChain) EndVerkleTransition() {
-	bc.stateCache.(*state.ForkingDB).EndTransition()
 }
