@@ -161,12 +161,12 @@ type ForkingDB struct {
 	*cachingDB
 	*VerkleDB
 
+	// TODO ensure that this info is in the DB
 	started, ended  bool
 	translatedRoots map[common.Hash]common.Hash // hash of the translated root, for opening
-
-	// TODO ensure that this info is in the DB
-	LastAccHash  common.Hash
-	LastSlotHash common.Hash
+	baseRoot        common.Hash                 // hash of the read-only base tree
+	LastAccHash     common.Hash                 // hash of the last translated account address
+	LastSlotHash    common.Hash                 // hash of the last translated storage slot address
 }
 
 // ContractCode implements Database
@@ -217,14 +217,23 @@ func (fdb *ForkingDB) OpenStorageTrie(stateRoot, addrHash, root common.Hash, sel
 
 // OpenTrie implements Database
 func (fdb *ForkingDB) OpenTrie(root common.Hash) (Trie, error) {
-	mpt, err := fdb.cachingDB.OpenTrie(root)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		mpt Trie
+		err error
+	)
 	if fdb.started {
+		mpt, err = fdb.cachingDB.OpenTrie(fdb.baseRoot)
+		if err != nil {
+			return nil, err
+		}
 		vkt, err := fdb.VerkleDB.OpenTrie(fdb.translatedRoots[root])
 		if err != nil {
 			return nil, err
+		} else {
+			mpt, err = fdb.cachingDB.OpenTrie(root)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), vkt.(*trie.VerkleTrie)), nil
 	}
@@ -265,6 +274,7 @@ func (fdb *ForkingDB) StartTransition(originalRoot, translatedRoot common.Hash) 
 				   \/     \/          \/          \/|__|        \/     \/     \/               \/     \/     \/                     \/            \/`)
 	fdb.started = true
 	fdb.translatedRoots = map[common.Hash]common.Hash{originalRoot: translatedRoot}
+	fdb.baseRoot = originalRoot
 }
 
 func (fdb *ForkingDB) EndTransition() {

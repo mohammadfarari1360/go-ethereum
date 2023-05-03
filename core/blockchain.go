@@ -1487,8 +1487,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		return 0, nil
 	}
 
-	// Open "conversion.txt" for reading, and convert the two fields in the file
-	// to the conversionBlock and conversionEnd uint64 variables.
 	f, err := os.Open("conversion.txt")
 	if err != nil {
 		log.Error("Failed to open conversion.txt", "err", err)
