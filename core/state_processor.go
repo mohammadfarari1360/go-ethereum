@@ -325,7 +325,7 @@ func (kvm *keyValueMigrator) addAccountCode(addr []byte, codeSize uint64, chunks
 }
 
 func (kvm *keyValueMigrator) getAddrPoint(addr []byte) *verkle.Point {
-	if bytes.Equal(addr, kvm.currAddr) {
+	if kvm.currAddrPoint != nil && bytes.Equal(addr, kvm.currAddr) {
 		return kvm.currAddrPoint
 	}
 	kvm.currAddr = addr
