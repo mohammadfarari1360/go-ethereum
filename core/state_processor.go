@@ -287,7 +287,7 @@ func (kvm *keyValueMigrator) addAccount(addr []byte, acc snapshot.Account) {
 
 	var nonce [verkle.LeafValueSize]byte
 	binary.LittleEndian.PutUint64(nonce[:8], acc.Nonce)
-	leafNodeData.Values[tutils.NonceLeafKey] = balance[:]
+	leafNodeData.Values[tutils.NonceLeafKey] = nonce[:]
 
 	leafNodeData.Values[tutils.CodeKeccakLeafKey] = acc.CodeHash[:]
 
