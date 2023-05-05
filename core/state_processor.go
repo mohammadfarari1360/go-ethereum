@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	tutils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/gballet/go-verkle"
@@ -128,10 +129,14 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 				slotnr := rawdb.ReadPreimage(statedb.Database().DiskDB(), stIt.Hash())
 				mkv.addStorageSlot(addr, slotnr, stIt.Slot())
 			}
+			if count == maxMovedCount {
+				stIt.Release()
+			}
 
 			// if less than maxCount slots were moved, move to the next account
-			for count < maxMovedCount {
-				if accIt.Next() {
+			for count < maxMovedCount && accIt.Next() {
+				count++ // count increase for the account itself
+
 					acc, err := snapshot.FullAccount(accIt.Account())
 					if err != nil {
 						log.Error("Invalid account encountered during traversal", "error", err)
@@ -150,12 +155,25 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 					}
 
 					if acc.HasStorage() {
-						for ; stIt.Next() && count < maxMovedCount; count++ {
-							slotnr := rawdb.ReadPreimage(statedb.Database().DiskDB(), stIt.Hash())
-
-							mkv.addStorageSlot(addr, slotnr, stIt.Slot())
-						}
+					stIt, err := statedb.Snaps().StorageIterator(mpt.Hash(), accIt.Hash(), common.Hash{})
+					if err != nil {
+						return nil, nil, 0, err
 					}
+						for ; stIt.Next() && count < maxMovedCount; count++ {
+						var (
+							value     []byte   // slot value after RLP decoding
+							safeValue [32]byte // 32-byte aligned value
+						)
+						if err := rlp.DecodeBytes(stIt.Slot(), &value); err != nil {
+							return nil, nil, 0, fmt.Errorf("error decoding bytes %x: %w", stIt.Slot(), err)
+						}
+						copy(safeValue[32-len(value):], value)
+							slotnr := rawdb.ReadPreimage(statedb.Database().DiskDB(), stIt.Hash())
+						fdb.LastSlotHash = stIt.Hash()
+
+						mkv.addStorageSlot(addr, slotnr, safeValue[:])
+						}
+					stIt.Release()
 				}
 			}
 
@@ -166,7 +184,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			} else {
 				// Update the pointers in the forking db
 				fdb.LastAccHash = accIt.Hash()
-				fdb.LastSlotHash = stIt.Hash()
 			}
 			log.Info("Collected and prepared key values from base tree", "count", count, "duration", time.Since(now))
 

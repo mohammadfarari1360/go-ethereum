@@ -165,8 +165,8 @@ type ForkingDB struct {
 	started, ended  bool
 	translatedRoots map[common.Hash]common.Hash // hash of the translated root, for opening
 	baseRoot        common.Hash                 // hash of the read-only base tree
-	LastAccHash     common.Hash                 // hash of the last translated account address
-	LastSlotHash    common.Hash                 // hash of the last translated storage slot address
+	LastAccHash     common.Hash                 // hash of the last translated account
+	LastSlotHash    common.Hash                 // hash of the last translated storage slot
 }
 
 // ContractCode implements Database
@@ -193,7 +193,7 @@ func (fdb *ForkingDB) CopyTrie(t Trie) Trie {
 
 	if fdb.started {
 		overlay := fdb.VerkleDB.CopyTrie(t)
-		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), overlay.(*trie.VerkleTrie))
+		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), overlay.(*trie.VerkleTrie), false /* XXX */, "copied")
 	}
 
 	return mpt
@@ -205,11 +205,11 @@ func (fdb *ForkingDB) OpenStorageTrie(stateRoot, addrHash, root common.Hash, sel
 	if fdb.started && err == nil {
 		// Return a "storage trie" that is an adapter between the storge MPT
 		// and the unique verkle tree.
-		vkt, err := fdb.VerkleDB.OpenStorageTrie(stateRoot, addrHash, fdb.translatedRoots[root], self)
+		vkt, err := fdb.VerkleDB.OpenStorageTrie(stateRoot, addrHash, fdb.translatedRoots[root], self.(*trie.TransitionTrie).Overlay())
 		if err != nil {
 			return nil, err
 		}
-		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), vkt.(*trie.VerkleTrie)), nil
+		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), vkt.(*trie.VerkleTrie), true, fmt.Sprintf("%x %x %x", stateRoot, addrHash, root)), nil
 	}
 
 	return mpt, err
@@ -229,13 +229,13 @@ func (fdb *ForkingDB) OpenTrie(root common.Hash) (Trie, error) {
 		vkt, err := fdb.VerkleDB.OpenTrie(fdb.translatedRoots[root])
 		if err != nil {
 			return nil, err
-		} else {
-			mpt, err = fdb.cachingDB.OpenTrie(root)
-			if err != nil {
-				return nil, err
-			}
 		}
-		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), vkt.(*trie.VerkleTrie)), nil
+		return trie.NewTransitionTree(mpt.(*trie.SecureTrie), vkt.(*trie.VerkleTrie), false, "main"), nil
+	} else {
+		mpt, err = fdb.cachingDB.OpenTrie(root)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return mpt, nil

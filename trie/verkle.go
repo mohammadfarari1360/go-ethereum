@@ -68,7 +68,7 @@ func (trie *VerkleTrie) GetKey(key []byte) []byte {
 // not be modified by the caller. If a node was not found in the database, a
 // trie.MissingNodeError is returned.
 func (trie *VerkleTrie) TryGet(addr, key []byte) ([]byte, error) {
-	pointEval := trie.pointCache.GetTreeKeyHeader(key)
+	pointEval := trie.pointCache.GetTreeKeyHeader(addr)
 	k := utils.GetTreeKeyStorageSlotWithEvaluatedAddress(pointEval, key)
 	return trie.root.Get(k, trie.db.diskdb.Get)
 }
@@ -246,7 +246,7 @@ func (trie *VerkleTrie) Commit(_ bool) (common.Hash, *NodeSet, error) {
 		}
 	}
 
-	return nodes[0].CommitmentBytes, NewNodeSet(common.Hash{}), nil
+	return nodes[0].CommitmentBytes, nil, nil
 }
 
 // NodeIterator returns an iterator that returns nodes of the trie. Iteration
