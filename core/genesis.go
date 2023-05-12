@@ -121,7 +121,8 @@ func (ga *GenesisAlloc) deriveHash(cfg *params.ChainConfig) (common.Hash, error)
 	// Create an ephemeral in-memory database for computing hash,
 	// all the derived states will be discarded to not pollute disk.
 	db := state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), trieCfg)
-	if cfg.IsCancun(big.NewInt(int64(0))) {
+	// TODO remove the nil config check once we have rebased, it should never be nil
+	if cfg != nil && cfg.IsCancun(big.NewInt(int64(0))) {
 		db.EndVerkleTransition()
 	}
 	statedb, err := state.New(common.Hash{}, db, nil)
@@ -145,7 +146,8 @@ func (ga *GenesisAlloc) deriveHash(cfg *params.ChainConfig) (common.Hash, error)
 func (ga *GenesisAlloc) flush(db ethdb.Database, cfg *params.ChainConfig) error {
 	trieCfg := &trie.Config{Preimages: true}
 	triedb := state.NewDatabaseWithConfig(db, trieCfg)
-	if cfg.IsCancun(big.NewInt(int64(0))) {
+	// TODO same here, see deriveHash
+	if cfg != nil && cfg.IsCancun(big.NewInt(int64(0))) {
 		triedb.EndVerkleTransition()
 	}
 	statedb, err := state.New(common.Hash{}, triedb, nil)
