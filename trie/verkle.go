@@ -238,7 +238,7 @@ func (trie *VerkleTrie) Commit(_ bool) (common.Hash, *NodeSet, error) {
 		}
 	}
 
-	return nodes[0].CommitmentBytes, NewNodeSet(common.Hash{}), nil
+	return nodes[0].CommitmentBytes, nil, nil
 }
 
 // NodeIterator returns an iterator that returns nodes of the trie. Iteration
