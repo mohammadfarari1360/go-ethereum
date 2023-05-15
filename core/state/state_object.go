@@ -222,8 +222,7 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 	}
 	// If the snapshot is unavailable or reading from it fails, load from the database.
 	if s.db.snap == nil || err != nil {
-		var tr Trie
-		tr = s.getTrie(db)
+		tr := s.getTrie(db)
 		start := time.Now()
 		if s.db.GetTrie().IsVerkle() {
 			var v []byte
